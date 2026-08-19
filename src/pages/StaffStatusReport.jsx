@@ -5,8 +5,13 @@ import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
 import { getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, updateStaffProfile } from "../utils/storage";
 
-const SHIFTS = ["Morning", "Evening"];
 const REPORT_KEY = "staffStatusReportConfigV2";
+const TABLE_COLUMN_WIDTHS = {
+  branch: 128,
+  shift: 104,
+  position: 210,
+  notes: 192,
+};
 const cardTones = {
   violet: "bg-violet-50 text-violet-600", blue: "bg-blue-50 text-blue-600", rose: "bg-rose-50 text-rose-600",
   amber: "bg-amber-50 text-amber-600", sky: "bg-sky-50 text-sky-600", indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600",
@@ -16,24 +21,75 @@ const loadConfig = () => {
   try { return JSON.parse(localStorage.getItem(REPORT_KEY) || "{}") || {}; }
   catch { return {}; }
 };
-const employmentStatus = (profile) => profile.employmentStatus || "Active";
-const profileBranch = (profile) => String(profile.workLocation || profile.workLocation1 || profile.branch || profile.statusReportBranch || "").split(";")[0].trim();
+const profileShiftAssignments = (profile) => {
+  const shifts = String(profile.assignedShift || "").split(";").map((s) => s.trim()).filter(Boolean);
+  return shifts.map((s) => {
+    if (s.includes("@")) {
+      const [shift, branch] = s.split("@");
+      return { shift: shift.trim(), branch: branch.trim() };
+    }
+    const defaultBranch = String(profile.workLocation || profile.workLocation1 || profile.branch || profile.statusReportBranch || "").split(";")[0].trim();
+    return { shift: s, branch: defaultBranch };
+  });
+};
+
+const profileBranch = (profile) => {
+  const assignments = profileShiftAssignments(profile);
+  if (assignments.length > 0) return assignments[0].branch;
+  return String(profile.workLocation || profile.workLocation1 || profile.branch || profile.statusReportBranch || "").split(";")[0].trim();
+};
+
+const isManagementRole = (title) => {
+  if (!title) return false;
+  const managementTitles = [
+    "HR",
+    "Branch Manager",
+    "Purchase and Inventory Controller",
+    "Office Admin and Doument Controller",
+    "Accountant",
+    "Marketing Executive",
+  ];
+  if (managementTitles.includes(title)) return true;
+  const titleLower = title.toLowerCase();
+  return (
+    titleLower.includes("manager") ||
+    titleLower.includes("admin") ||
+    titleLower.includes("accountant") ||
+    titleLower.includes("controller") ||
+    titleLower.includes("hr") ||
+    titleLower.includes("director") ||
+    titleLower.includes("executive")
+  );
+};
 
 const profileShifts = (profile) => {
-  const shifts = profile.assignedShifts || profile.assignedShift || "";
-  if (Array.isArray(shifts)) return shifts;
-  return String(shifts).split(";").map((s) => s.trim()).filter(Boolean);
+  const rawShifts = profile.assignedShifts || profile.assignedShift || "";
+  if (Array.isArray(rawShifts)) return rawShifts;
+  const parsed = String(rawShifts)
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (s.includes("@") ? s.split("@")[0].trim() : s));
+  if (parsed.length === 0 && isManagementRole(profile.jobTitle)) {
+    return ["8-5pm"];
+  }
+  return parsed;
 };
 
 const personHasShift = (profile, branch, shift) => {
-  const pBranch = profileBranch(profile);
-  const pShifts = profileShifts(profile);
-  return (!branch || pBranch === branch || !profile.statusReportBranch) && pShifts.includes(shift);
+  const assignments = profileShiftAssignments(profile);
+  if (isManagementRole(profile.jobTitle) && shift === "8-5pm") {
+    if (assignments.length === 0) {
+      const pBranch = profileBranch(profile);
+      return !branch || pBranch === branch;
+    }
+  }
+  return assignments.some((a) => a.shift === shift && (!branch || a.branch === branch));
 };
 
 const cellKey = (branch, shift, position) => `${branch}::${shift}::${position}`;
 const noteKey = (branch, shift) => `${branch}::${shift}`;
-const eligible = (profile) => (profile.contractStatus === "Signed" || profile.contractStatus === "Pending Signature" || !profile.contractStatus) && employmentStatus(profile) !== "Inactive";
+const eligible = (profile) => (profile.contractStatus === "Signed" || profile.contractStatus === "Pending Signature" || !profile.contractStatus) && (profile.employmentStatus || "Active") !== "Inactive";
 const pct = (assigned, required) => required ? Math.min(100, Math.round(assigned / required * 100)) : 100;
 
 const toneFor = (required, assigned) => {
@@ -79,24 +135,8 @@ export default function StaffStatusReport() {
         staffMap.set(p.employeeId || p.contractNumber || p.fullName, p);
       }
     });
-    contracts.forEach((c) => {
-      const key = c.contractNumber || c.fullName;
-      if (!staffMap.has(key) && c.fullName && c.jobTitle) {
-        staffMap.set(key, {
-          employeeId: c.contractNumber || `EMP-${c.fullName.replace(/\s+/g, "")}`,
-          fullName: c.fullName,
-          jobTitle: c.jobTitle,
-          department: c.department || "Kitchen Staff",
-          workLocation: c.workLocation1 || c.workLocation || "",
-          contractStatus: c.status || "Signed",
-          employmentStatus: "Active",
-          assignedShift: "",
-          phoneNumber: c.phoneNumber || "",
-        });
-      }
-    });
     return Array.from(staffMap.values());
-  }, [profiles, contracts]);
+  }, [profiles]);
 
   const getPositionDepartment = useCallback((title) => {
     if (!title) return "Kitchen Staff";
@@ -185,23 +225,29 @@ export default function StaffStatusReport() {
 
   const shownBranches = branches;
   const shownPositions = positions;
-  const shownShifts = SHIFTS;
+  const shownShifts = useMemo(() => {
+    if (activeTab === "Management Staff") {
+      return ["8-5pm"];
+    }
+    return ["Morning", "Evening"];
+  }, [activeTab]);
 
-  const assigned = (branch, shift, position) => candidateStaff.filter((p) => (profileBranch(p) === branch || !profileBranch(p)) && personHasShift(p, branch, shift) && p.jobTitle === position);
-  const required = (branch, shift, position) => Math.max(0, Number(config.requirements?.[cellKey(branch, shift, position)]) || 0);
+  const assigned = useCallback((branch, shift, position) => candidateStaff.filter((p) => (profileBranch(p) === branch || !profileBranch(p)) && personHasShift(p, branch, shift) && p.jobTitle === position), [candidateStaff]);
+  const required = useCallback((branch, shift, position) => Math.max(0, Number(config.requirements?.[cellKey(branch, shift, position)]) || 0), [config.requirements]);
   const visibleRows = () => shownShifts;
 
-  const totals = (() => {
+  const totals = useMemo(() => {
     let need = 0, have = 0, morningNeed = 0, morningHave = 0, eveningNeed = 0, eveningHave = 0;
     const weakBranches = new Set();
-    branches.forEach((branch) => SHIFTS.forEach((shift) => positions.forEach((position) => {
+    branches.forEach((branch) => shownShifts.forEach((shift) => positions.forEach((position) => {
       const r = required(branch, shift, position), a = assigned(branch, shift, position).length;
       need += r; have += a;
-      if (shift === "Morning") { morningNeed += r; morningHave += a; } else { eveningNeed += r; eveningHave += a; }
+      if (shift === "Morning" || shift === "8-5pm") { morningNeed += r; morningHave += a; } 
+      else if (shift === "Evening") { eveningNeed += r; eveningHave += a; }
       if (a < r) weakBranches.add(branch);
     })));
     return { open: Math.max(0, need - have), weak: weakBranches.size, morning: pct(morningHave, morningNeed), evening: pct(eveningHave, eveningNeed), overall: pct(have, need) };
-  })();
+  }, [branches, shownShifts, positions, required, assigned]);
 
   const saveConfig = (next) => { setConfig(next); localStorage.setItem(REPORT_KEY, JSON.stringify(next)); };
   const updateNeed = (branch, shift, position, value) => saveConfig({ ...config, requirements: { ...config.requirements, [cellKey(branch, shift, position)]: value } });
@@ -210,15 +256,16 @@ export default function StaffStatusReport() {
   const openRemove = (branch = "", shift = "", position = "") => { setDialog({ mode: "remove", branch, shift, position }); setDialogSearch(""); };
   
   const assignPerson = (person) => {
-    const currentShifts = profileShifts(person);
-    if (currentShifts.includes(dialog.shift)) {
+    const currentAssignments = String(person.assignedShift || person.assignedShifts || "").split(";").map((s) => s.trim()).filter(Boolean);
+    const newAssignment = `${dialog.shift}@${dialog.branch}`;
+    if (currentAssignments.includes(newAssignment)) {
       setDialog(null);
       return;
     }
-    const nextShifts = [...currentShifts, dialog.shift].join("; ");
+    const nextAssignments = [...currentAssignments, newAssignment].join("; ");
     saveStaffProfile({
       ...person,
-      assignedShift: nextShifts,
+      assignedShift: nextAssignments,
       statusReportBranch: dialog.branch,
       workLocation: dialog.branch,
       workLocation1: dialog.branch,
@@ -229,14 +276,17 @@ export default function StaffStatusReport() {
     setDialog(null);
   };
   
-  const removePerson = (person, targetShift) => {
-    const currentShifts = profileShifts(person);
+  const removePerson = (person, targetShift, targetBranch) => {
+    const currentAssignments = String(person.assignedShift || person.assignedShifts || "").split(";").map((s) => s.trim()).filter(Boolean);
     const shiftToRemove = targetShift || dialog?.shift;
-    const nextShifts = shiftToRemove ? currentShifts.filter((s) => s !== shiftToRemove).join("; ") : "";
+    const branchToRemove = targetBranch || dialog?.branch;
+    const assignmentToRemove = `${shiftToRemove}@${branchToRemove}`;
+    const nextAssignments = currentAssignments
+      .filter((a) => a !== assignmentToRemove && a !== shiftToRemove && a !== `${shiftToRemove}@${branchToRemove}`)
+      .join("; ");
     saveStaffProfile({
       ...person,
-      assignedShift: nextShifts,
-      statusReportBranch: nextShifts ? (person.statusReportBranch || person.workLocation) : "",
+      assignedShift: nextAssignments,
     });
     setProfiles(getStaffProfiles());
   };
@@ -257,32 +307,43 @@ export default function StaffStatusReport() {
     return !q || `${person.fullName} ${person.employeeId} ${person.phoneNumber}`.toLowerCase().includes(q);
   });
 
-  const cards = [
-    ["Total Employees", departmentStaff.length, Users, "violet"], ["Scheduled Today", new Set(departmentScheduled.map((p) => p.employeeId)).size, UserCheck, "blue"],
-    ["Open Positions", totals.open, BriefcaseBusiness, "rose"], ["Understaffed Branches", totals.weak, AlertTriangle, "amber"],
-    ["Morning Coverage", `${totals.morning}%`, SunMedium, "sky"], ["Evening Coverage", `${totals.evening}%`, Sunset, "indigo"], ["Overall Staffing", `${totals.overall}%`, LayoutGrid, "emerald"],
-  ];
+  const cards = useMemo(() => {
+    const list = [
+      ["Total Employees", departmentStaff.length, Users, "violet"],
+      ["Scheduled Today", new Set(departmentScheduled.map((p) => p.employeeId)).size, UserCheck, "blue"],
+      ["Open Positions", totals.open, BriefcaseBusiness, "rose"],
+      ["Understaffed Branches", totals.weak, AlertTriangle, "amber"],
+    ];
+    if (activeTab === "Management Staff") {
+      list.push(["Office Coverage", `${totals.morning}%`, SunMedium, "sky"]);
+    } else {
+      list.push(["Morning Coverage", `${totals.morning}%`, SunMedium, "sky"]);
+      list.push(["Evening Coverage", `${totals.evening}%`, Sunset, "indigo"]);
+    }
+    list.push(["Overall Staffing", `${totals.overall}%`, LayoutGrid, "emerald"]);
+    return list;
+  }, [departmentStaff.length, departmentScheduled, totals, activeTab]);
 
-  return <div className="mx-auto max-w-[1900px] pb-12">
-    <header className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-5 bg-gradient-to-r from-slate-950 via-slate-900 to-violet-950 px-6 py-7 text-white lg:flex-row lg:items-center lg:justify-between lg:px-8">
-        <div><p className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[.2em] text-violet-300"><LayoutGrid size={15} /> Workforce Planning</p><h1 className="mt-3 text-3xl font-black">Staff Status Report</h1><p className="mt-2 text-sm text-slate-300">Live branch and shift coverage from signed contracts and active staff profiles.</p></div>
-        <div className="flex flex-wrap gap-2 no-print"><Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save Requirements" : "Edit Required Counts"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} /><Action icon={Plus} label="Assign Employee" primary={!editNeeds} onClick={() => openAssign()} /><Action icon={MinusCircle} label="Remove" onClick={() => openRemove()} /><Action icon={Download} label="PDF" onClick={() => exportToPDF("staff-status-report-print", "Staff_Status_Report.pdf")} /><Action icon={Printer} label="Print" onClick={() => printDocument("staff-status-report-print")} /></div>
+  return <div className="mx-auto max-w-full px-4 pb-4">
+    <header className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 bg-gradient-to-r from-slate-950 via-slate-900 to-violet-950 px-4 py-3 text-white lg:flex-row lg:items-center lg:justify-between">
+        <div><h1 className="text-xl font-black">Staff Status Report</h1></div>
+        <div className="flex flex-wrap gap-2 no-print"><Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save" : "Edit Required"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} /><Action icon={Plus} label="Assign" primary={!editNeeds} onClick={() => openAssign()} /><Action icon={MinusCircle} label="Remove" onClick={() => openRemove()} /><Action icon={Download} label="PDF" onClick={() => exportToPDF("staff-status-report-print", "Staff_Status_Report.pdf")} /><Action icon={Printer} label="Print" onClick={() => printDocument("staff-status-report-print")} /></div>
       </div>
     </header>
 
     {/* Tab Switcher */}
-    <div className="mt-6 border-b border-slate-200 no-print">
-      <div className="flex gap-6">
+    <div className="mt-3 border-b border-slate-200 no-print">
+      <div className="flex gap-4">
         <button 
           onClick={() => setActiveTab("Kitchen Staff")}
-          className={`pb-3 font-bold text-sm border-b-2 transition-all cursor-pointer ${activeTab === "Kitchen Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          className={`pb-2 font-bold text-xs border-b-2 transition-all cursor-pointer ${activeTab === "Kitchen Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
         >
           Kitchen Staff ({kitchenStaffCount})
         </button>
         <button 
           onClick={() => setActiveTab("Management Staff")}
-          className={`pb-3 font-bold text-sm border-b-2 transition-all cursor-pointer ${activeTab === "Management Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          className={`pb-2 font-bold text-xs border-b-2 transition-all cursor-pointer ${activeTab === "Management Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
         >
           Management Staff ({managementStaffCount})
         </button>
@@ -291,42 +352,220 @@ export default function StaffStatusReport() {
 
     <div id="staff-status-report-print">
       {/* Printable Header */}
-      <div className="hidden print-only mb-6">
-        <h1 className="text-2xl font-black text-slate-900">Staff Status Report - {activeTab}</h1>
-        <p className="text-sm text-slate-500">Live branch and shift coverage from signed contracts and active staff profiles.</p>
+      <div className="hidden print-only mb-3">
+        <h1 className="text-lg font-black text-slate-900">Staff Status Report - {activeTab}</h1>
       </div>
 
-      <section className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">{cards.map(([label, value, Icon, color], index) => <motion.article key={label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * .04 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${cardTones[color]}`}><Icon size={18} /></span><p className="mt-4 text-2xl font-black text-slate-900">{value}</p><p className="mt-1 text-xs font-bold text-slate-500">{label}</p></motion.article>)}</section>
+      <section className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+        {cards.map(([label, value, Icon, color]) => (
+          <article key={label} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${cardTones[color]}`}><Icon size={15} /></span>
+            <div>
+              <p className="text-sm font-black leading-none text-slate-900">{value}</p>
+              <p className="mt-0.5 text-[10px] font-bold text-slate-500 leading-none">{label}</p>
+            </div>
+          </article>
+        ))}
+      </section>
 
-      <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold"><Legend color="bg-rose-400" text="Staff required" /><Legend color="bg-slate-300" text="No requirement" /><span className="ml-auto text-slate-400">Updated {new Date().toLocaleString()}</span></div>
+      <div className="mt-2.5 flex flex-wrap gap-2 text-[10px] font-bold">
+        <Legend color="bg-rose-400" text="Staff required" />
+        <Legend color="bg-slate-300" text="No requirement" />
+        <span className="ml-auto text-slate-400">Updated {new Date().toLocaleString()}</span>
+      </div>
 
-      <section className="mt-4 hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:block"><div className="overflow-x-auto"><table className="min-w-max border-separate border-spacing-0 text-left text-sm"><thead className="sticky top-0 z-30"><tr><th className="sticky left-0 z-40 min-w-44 border-b border-r border-slate-700 bg-slate-900 px-4 py-4 text-xs font-black uppercase tracking-wider text-white">Branch</th><th className="sticky left-44 z-40 min-w-28 border-b border-r border-slate-700 bg-slate-900 px-4 py-4 text-xs font-black uppercase tracking-wider text-white">Shift</th>{shownPositions.map((position) => {
-        const r = shownBranches.reduce((sum, b) => sum + shownShifts.reduce((n, s) => n + required(b, s, position), 0), 0), a = shownBranches.reduce((sum, b) => sum + shownShifts.reduce((n, s) => n + assigned(b, s, position).length, 0), 0); return <PositionHead key={position} position={position} required={r} assigned={a} tone={toneFor(r, a)} />;
-      })}<th className="min-w-72 border-b border-slate-700 bg-slate-900 px-4 py-4 text-xs font-black uppercase tracking-wider text-white">Notes</th></tr></thead><tbody>{shownBranches.map((branch) => {
-        const rows = visibleRows(branch); return rows.map((shift, index) => <tr key={`${branch}-${shift}`}>{index === 0 && <th rowSpan={rows.length} className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-4 py-5"><div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Building2 size={18} /></span><span className="max-w-28 break-words font-black text-slate-900">{branch}</span></div></th>}<th className="sticky left-44 z-20 border-b border-r border-slate-200 bg-white px-4 py-5"><span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-black ${shift === "Morning" ? "bg-sky-50 text-sky-700" : "bg-indigo-50 text-indigo-700"}`}>{shift === "Morning" ? <SunMedium size={14} /> : <Sunset size={14} />}{shift}</span></th>{shownPositions.map((position) => {
-          const people = assigned(branch, shift, position), r = required(branch, shift, position); return <StaffCell key={position} {...{ branch, shift, position, people, required: r, tone: toneFor(r, people.length), editNeeds, updateNeed, openAssign, removePerson, setSelectedProfile }} />;
-        })}<td className="border-b border-slate-200 bg-white p-3 align-top"><textarea className="min-h-24 w-full resize-none rounded-xl border border-transparent bg-slate-50 p-3 text-sm outline-none hover:border-slate-200 focus:border-violet-300 focus:bg-white" value={config.notes?.[noteKey(branch, shift)] || ""} onChange={(e) => updateNote(branch, shift, e.target.value)} placeholder="Training, interview, transfer, leave..." /></td></tr>);
-      })}</tbody></table>{!shownPositions.length && <Empty text="No positions configured." />}{!shownBranches.length && <Empty text="No branches are configured in Contract Generator settings." />}</div></section>
+      <section className="mt-3 hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
+        <div className="overflow-x-auto">
+          <table
+            className="min-w-max table-fixed border-separate border-spacing-0 text-left text-xs"
+            style={{
+              width: TABLE_COLUMN_WIDTHS.branch + TABLE_COLUMN_WIDTHS.shift + TABLE_COLUMN_WIDTHS.notes + (shownPositions.length * TABLE_COLUMN_WIDTHS.position),
+            }}
+          >
+            <colgroup>
+              <col style={{ width: TABLE_COLUMN_WIDTHS.branch }} />
+              <col style={{ width: TABLE_COLUMN_WIDTHS.shift }} />
+              {shownPositions.map((position) => <col key={position} style={{ width: TABLE_COLUMN_WIDTHS.position }} />)}
+              <col style={{ width: TABLE_COLUMN_WIDTHS.notes }} />
+            </colgroup>
+            <thead className="sticky top-0 z-30">
+              <tr>
+                <th className="sticky left-0 z-40 border-b border-r border-slate-700 bg-slate-900 px-2 py-2 text-[11px] font-black uppercase text-white shadow-sm">Branch</th>
+                <th className="sticky z-40 border-b border-r border-slate-700 bg-slate-900 px-2 py-2 text-[11px] font-black uppercase text-white shadow-sm" style={{ left: TABLE_COLUMN_WIDTHS.branch }}>Shift</th>
+                {shownPositions.map((position) => {
+                  const r = shownBranches.reduce((sum, b) => sum + shownShifts.reduce((n, s) => n + required(b, s, position), 0), 0);
+                  const a = shownBranches.reduce((sum, b) => sum + shownShifts.reduce((n, s) => n + assigned(b, s, position).length, 0), 0);
+                  return <PositionHead key={position} position={position} required={r} assigned={a} />;
+                })}
+                <th className="border-b border-slate-700 bg-slate-900 px-2 py-2 text-[11px] font-black uppercase text-white shadow-sm">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shownBranches.map((branch) => {
+                const rows = visibleRows(branch);
+                return rows.map((shift, index) => (
+                  <tr key={`${branch}-${shift}`} className="hover:bg-slate-50/30">
+                    {index === 0 && (
+                      <th rowSpan={rows.length} className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-2 py-2 text-left font-black text-slate-900 align-middle">
+                        {branch}
+                      </th>
+                    )}
+                    <th className="sticky z-20 border-b border-r border-slate-200 bg-white px-2 py-2 align-middle" style={{ left: TABLE_COLUMN_WIDTHS.branch }}>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black ${shift === "Morning" || shift === "8-5pm" ? "bg-sky-50 text-sky-700" : "bg-indigo-50 text-indigo-700"}`}>
+                        {shift === "Morning" || shift === "8-5pm" ? <SunMedium size={10} /> : <Sunset size={10} />}
+                        {shift}
+                      </span>
+                    </th>
+                    {shownPositions.map((position) => {
+                      const people = assigned(branch, shift, position);
+                      const r = required(branch, shift, position);
+                      return <StaffCell key={position} {...{ branch, shift, position, people, required: r, tone: toneFor(r, people.length), editNeeds, updateNeed, openAssign, removePerson, setSelectedProfile }} />;
+                    })}
+                    <td className="border-b border-slate-200 bg-white p-1.5 align-middle">
+                      <input 
+                        className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs outline-none focus:border-violet-300 focus:bg-white" 
+                        value={config.notes?.[noteKey(branch, shift)] || ""} 
+                        onChange={(e) => updateNote(branch, shift, e.target.value)} 
+                        placeholder="Notes..." 
+                      />
+                    </td>
+                  </tr>
+                ));
+              })}
+            </tbody>
+          </table>
+          {!shownPositions.length && <Empty text="No positions configured." />}
+          {!shownBranches.length && <Empty text="No branches configured." />}
+        </div>
+      </section>
 
-      <section className="mt-4 space-y-4 lg:hidden">{shownBranches.map((branch) => <article key={branch} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center gap-3 border-b bg-slate-50 p-4"><Building2 size={18} className="text-violet-600" /><h3 className="font-black">{branch}</h3></div>{visibleRows(branch).map((shift) => <div key={shift} className="border-b p-4 last:border-0"><h4 className="mb-3 flex items-center gap-2 font-black text-slate-700">{shift === "Morning" ? <SunMedium size={16} /> : <Sunset size={16} />}{shift}</h4><div className="space-y-2">{shownPositions.map((position) => { const people = assigned(branch, shift, position), r = required(branch, shift, position), tone = toneFor(r, people.length); return <button key={position} onClick={() => openAssign(branch, shift, position)} className={`w-full rounded-xl border p-3 text-left ${tone.cell}`}><span className="flex justify-between gap-2 font-black"><span>{position}</span><span className={`rounded-full px-2 py-1 text-[10px] ${tone.badge}`}>{tone.label}</span></span><span className="mt-2 block text-xs">{people.length ? people.map((p) => p.fullName).join(", ") : "Tap to assign"}</span></button>; })}</div><textarea className="mt-3 min-h-20 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm" value={config.notes?.[noteKey(branch, shift)] || ""} onChange={(e) => updateNote(branch, shift, e.target.value)} placeholder="Shift notes..." /></div>)}</article>)}</section>
+      <section className="mt-3 space-y-3 lg:hidden">
+        {shownBranches.map((branch) => (
+          <article key={branch} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b bg-slate-50 p-3">
+              <Building2 size={16} className="text-violet-600" />
+              <h3 className="font-black text-xs">{branch}</h3>
+            </div>
+            {visibleRows(branch).map((shift) => (
+              <div key={shift} className="border-b p-3 last:border-0">
+                <h4 className="mb-2 flex items-center gap-1.5 font-black text-xs text-slate-700">
+                  {shift === "Morning" || shift === "8-5pm" ? <SunMedium size={14} /> : <Sunset size={14} />}
+                  {shift}
+                </h4>
+                <div className="space-y-1.5">
+                  {shownPositions.map((position) => {
+                    const people = assigned(branch, shift, position);
+                    const r = required(branch, shift, position);
+                    const tone = toneFor(r, people.length);
+                    return (
+                      <button key={position} onClick={() => openAssign(branch, shift, position)} className={`w-full rounded-lg border p-2 text-left text-xs ${tone.cell}`}>
+                        <span className="flex justify-between gap-2 font-black">
+                          <span>{position}</span>
+                          <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${tone.badge}`}>{tone.label}</span>
+                        </span>
+                        <span className="mt-1 block text-[10px]">{people.length ? people.map((p) => p.fullName).join(", ") : "Tap to assign"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <input 
+                  className="mt-2 w-full rounded border border-slate-200 bg-slate-50 p-2 text-xs" 
+                  value={config.notes?.[noteKey(branch, shift)] || ""} 
+                  onChange={(e) => updateNote(branch, shift, e.target.value)} 
+                  placeholder="Shift notes..." 
+                />
+              </div>
+            ))}
+          </article>
+        ))}
+      </section>
     </div>
 
-    <AnimatePresence>{dialog && <AssignDialog dialog={dialog} setDialog={setDialog} branches={branches} positions={positions} people={dialogPeople} search={dialogSearch} setSearch={setDialogSearch} assign={assignPerson} remove={removePerson} profileShifts={profileShifts} profileBranch={profileBranch} />}</AnimatePresence>
+    <AnimatePresence>
+      {dialog && <AssignDialog dialog={dialog} setDialog={setDialog} branches={branches} positions={positions} people={dialogPeople} search={dialogSearch} setSearch={setDialogSearch} assign={assignPerson} remove={removePerson} profileShifts={profileShifts} profileBranch={profileBranch} shifts={shownShifts} />}
+    </AnimatePresence>
     {selectedProfile && <StaffProfileModal profile={selectedProfile} profiles={profiles} onProfileUpdate={updateSelected} onClose={() => setSelectedProfile(null)} />}
   </div>;
 }
 
-function Action({ icon: Icon, label, onClick, primary }) { return <button type="button" onClick={onClick} className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold transition ${primary ? "bg-violet-500 text-white shadow-lg shadow-violet-950/30 hover:bg-violet-400" : "border border-white/15 bg-white/10 text-white hover:bg-white/15"}`}><Icon size={16} />{label}</button>; }
-function Legend({ color, text }) { return <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-600"><span className={`h-2.5 w-2.5 rounded-full ${color}`} />{text}</span>; }
-function Select({ label, value, options, all, change, disabled }) { return <label><span className="mb-1.5 block text-xs font-bold text-slate-500">{label}</span><select className="input-field disabled:bg-slate-100" value={value} onChange={(e) => change(e.target.value)} disabled={disabled}><option value="">{all}</option>{options.map((option) => { const item = typeof option === "string" ? { value: option, label: option } : option; return <option key={item.value} value={item.value}>{item.label}</option>; })}</select></label>; }
-function PositionHead({ position, required, assigned, tone }) { return <th className="min-w-64 border-b border-r border-slate-700 bg-slate-900 px-4 py-3"><div className="flex justify-between gap-3"><div><p className="max-w-40 break-words text-sm font-black text-white">{position}</p><div className="mt-3 flex gap-4">{[["Required", required], ["Assigned", assigned], ["Remaining", Math.max(0, required - assigned)]].map(([label, value]) => <span key={label}><small className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</small><strong className="text-sm text-white">{value}</strong></span>)}</div></div><span className={`mt-1 h-3 w-3 rounded-full ${tone.dot} ring-4 ring-white/10`} /></div></th>; }
-
-function StaffCell({ branch, shift, position, people, required, tone, editNeeds, updateNeed, openAssign, removePerson, setSelectedProfile }) {
-  return <td onClick={() => openAssign(branch, shift, position)} className={`min-w-64 cursor-pointer border-b border-r p-3 align-top transition hover:ring-2 hover:ring-inset hover:ring-violet-300 ${tone.cell}`}><div className="flex min-h-20 flex-col gap-2"><AnimatePresence initial={false}>{people.map((person) => <motion.div layout initial={{ opacity: 0, scale: .92 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: .9 }} key={person.employeeId} onClick={(e) => { e.stopPropagation(); setSelectedProfile(person); }} className="group relative flex items-center gap-2 rounded-xl border border-white/70 bg-white p-2 shadow-sm hover:border-violet-200 hover:shadow-md"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100 text-[10px] font-black text-violet-700">{String(person.fullName || "E").split(/\s+/).map((part) => part[0]).slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs text-slate-800">{person.fullName}</strong><small className="flex items-center gap-1 truncate text-[10px] font-semibold text-slate-400"><BriefcaseBusiness size={10} />{person.employeeId}</small></span><button type="button" onClick={(e) => { e.stopPropagation(); removePerson(person, shift); }} className="rounded-md p-1 text-slate-300 opacity-0 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"><X size={13} /></button><div className="pointer-events-none absolute bottom-[calc(100%+8px)] left-0 z-50 hidden w-60 rounded-xl bg-slate-950 p-3 text-xs text-white shadow-xl group-hover:block"><strong>{person.fullName}</strong><div className="mt-2 space-y-1 text-slate-300"><p>ID: {person.employeeId}</p><p>Phone: {person.phoneNumber || "Not provided"}</p><p>Position: {person.jobTitle}</p><p>Department: {person.department || "Not provided"}</p><p>Branch: {branch}</p><p>Contract: {person.contractStatus}</p></div></div></motion.div>)}</AnimatePresence>{!people.length && <button type="button" className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-dashed border-current/30 text-xs font-bold opacity-70"><Plus size={14} /> Assign {position}</button>}</div><div onClick={(e) => e.stopPropagation()} className="mt-3 flex items-center justify-between border-t border-current/10 pt-2"><span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${tone.badge}`}>{tone.label}</span>{editNeeds ? <label className="flex items-center gap-1 text-[10px] font-bold uppercase"><span>Required</span><input className="h-8 w-14 rounded-lg border bg-white text-center text-sm font-black text-slate-900" type="number" min="0" value={required} onChange={(e) => updateNeed(branch, shift, position, e.target.value)} /></label> : <small className="font-bold opacity-70">{people.length}/{required}</small>}</div></td>;
+function Action({ icon: Icon, label, onClick, primary }) {
+  return <button type="button" onClick={onClick} className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold transition ${primary ? "bg-violet-500 text-white shadow shadow-violet-950/20 hover:bg-violet-400" : "border border-white/15 bg-white/10 text-white hover:bg-white/15"}`}><Icon size={14} />{label}</button>;
+}
+function Legend({ color, text }) {
+  return <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1 text-slate-600"><span className={`h-2 w-2 rounded-full ${color}`} />{text}</span>;
+}
+function Select({ label, value, options, all, change, disabled }) {
+  return <label><span className="mb-1 block text-[10px] font-bold text-slate-500">{label}</span><select className="input-field h-8 py-0.5 text-xs disabled:bg-slate-100" value={value} onChange={(e) => change(e.target.value)} disabled={disabled}><option value="">{all}</option>{options.map((option) => { const item = typeof option === "string" ? { value: option, label: option } : option; return <option key={item.value} value={item.value}>{item.label}</option>; })}</select></label>;
 }
 
-function AssignDialog({ dialog, setDialog, branches, positions, people, search, setSearch, assign, remove, profileShifts, profileBranch }) {
+function PositionHead({ position, required, assigned }) {
+  return (
+    <th className="border-b border-r border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white">
+      <div className="flex flex-col gap-0.5">
+        <p className="truncate font-black" title={position}>{position}</p>
+        <div className="flex items-center gap-1.5 opacity-80 text-[10px] font-bold">
+          <span>Req: {required}</span>
+          <span>·</span>
+          <span>Asgn: {assigned}</span>
+        </div>
+      </div>
+    </th>
+  );
+}
+
+function StaffCell({ branch, shift, position, people, required, tone, editNeeds, updateNeed, openAssign, removePerson, setSelectedProfile }) {
+  return (
+    <td onClick={() => openAssign(branch, shift, position)} className={`cursor-pointer border-b border-r p-1.5 align-middle transition hover:ring-2 hover:ring-inset hover:ring-violet-300 ${tone.cell}`}>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between mb-0.5 border-b border-current/10 pb-0.5">
+          <span className="text-[9px] font-bold opacity-60">Staff ({people.length})</span>
+          <button 
+            type="button" 
+            onClick={(e) => { e.stopPropagation(); openAssign(branch, shift, position); }}
+            className="flex h-4 w-4 items-center justify-center rounded bg-black/5 hover:bg-black/10 text-current transition-colors"
+            title="Assign employee"
+          >
+            <Plus size={10} />
+          </button>
+        </div>
+        <AnimatePresence initial={false}>
+          {people.map((person) => (
+            <motion.div
+              layout
+              initial={{ opacity: 0, scale: .95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: .95 }}
+              key={person.employeeId}
+              onClick={(e) => { e.stopPropagation(); setSelectedProfile(person); }}
+              className="group relative flex items-center justify-between gap-1 rounded bg-white px-1.5 py-0.5 shadow-sm hover:border-violet-200"
+            >
+              <span className="truncate text-[11px] font-bold text-slate-800" title={person.fullName}>{person.fullName}</span>
+              <button type="button" onClick={(e) => { e.stopPropagation(); removePerson(person, shift, branch); }} className="text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100">
+                <X size={11} />
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        {!people.length && (
+          <span className="text-center text-[10px] font-bold text-slate-400 border border-dashed border-slate-200 py-1 rounded">Assign</span>
+        )}
+        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-between pt-0.5 text-[10px] font-bold opacity-75">
+          {editNeeds ? (
+            <label className="flex items-center gap-1">
+              <span>Req</span>
+              <input className="h-6 w-10 rounded border bg-white text-center text-xs font-black text-slate-900" type="number" min="0" value={required} onChange={(e) => updateNeed(branch, shift, position, e.target.value)} />
+            </label>
+          ) : (
+            <span className="ml-auto">{people.length}/{required}</span>
+          )}
+        </div>
+      </div>
+    </td>
+  );
+}
+
+function AssignDialog({ dialog, setDialog, branches, positions, people, search, setSearch, assign, remove, profileShifts, profileBranch, shifts }) {
   const assigning = dialog.mode === "assign";
-  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDialog(null)} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><motion.section initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12 }} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex justify-between border-b p-5"><div><p className="text-xs font-black uppercase tracking-wider text-violet-600">Quick Action</p><h2 className="mt-1 text-xl font-black">{assigning ? "Assign Employee" : "Remove Assignment"}</h2><p className="mt-1 text-sm text-slate-500">{assigning ? "Active employees in this position eligible for shift assignment." : "Choose a scheduled employee to remove."}</p></div><button onClick={() => setDialog(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100"><X size={17} /></button></header><div className="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-3"><Select label="Branch" value={dialog.branch} options={branches} all="All branches" change={(v) => setDialog({ ...dialog, branch: v })} /><Select label="Shift" value={dialog.shift} options={SHIFTS} all="All shifts" change={(v) => setDialog({ ...dialog, shift: v })} /><Select label="Position" value={dialog.position} options={positions} all="All positions" change={(v) => setDialog({ ...dialog, position: v })} /></div><div className="p-5"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input autoFocus className="input-field pl-10" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, ID, or phone" /></label></div><div className="flex-1 space-y-2 overflow-y-auto px-5 pb-5">{people.map((person) => { const s = profileShifts(person); return <button key={person.employeeId} onClick={() => assigning ? assign(person) : remove(person, dialog.shift)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left hover:border-violet-300 hover:bg-violet-50"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-sm font-black text-violet-700">{String(person.fullName || "E").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{person.fullName}</strong><small className="text-slate-500">{person.employeeId} · {person.jobTitle}{s.length ? ` · ${profileBranch(person)} (${s.join(", ")})` : ""}</small></span><span className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assigning ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{assigning ? "Assign" : "Remove"}</span></button>; })}{!people.length && <div className="rounded-2xl border border-dashed bg-slate-50 py-12 text-center"><UserRoundSearch className="mx-auto text-slate-300" size={32} /><p className="mt-3 font-bold text-slate-700">No available employees found</p><p className="mt-1 text-sm text-slate-500">Check the position, status, or current assignment.</p></div>}</div></motion.section></motion.div>;
+  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDialog(null)} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><motion.section initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12 }} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex justify-between border-b p-5"><div><p className="text-xs font-black uppercase tracking-wider text-violet-600">Quick Action</p><h2 className="mt-1 text-xl font-black">{assigning ? "Assign Employee" : "Remove Assignment"}</h2><p className="mt-1 text-sm text-slate-500">{assigning ? "Active employees in this position eligible for shift assignment." : "Choose a scheduled employee to remove."}</p></div><button onClick={() => setDialog(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100"><X size={17} /></button></header><div className="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-3"><Select label="Branch" value={dialog.branch} options={branches} all="All branches" change={(v) => setDialog({ ...dialog, branch: v })} /><Select label="Shift" value={dialog.shift} options={shifts} all="All shifts" change={(v) => setDialog({ ...dialog, shift: v })} /><Select label="Position" value={dialog.position} options={positions} all="All positions" change={(v) => setDialog({ ...dialog, position: v })} /></div><div className="p-5"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input autoFocus className="input-field pl-10" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, ID, or phone" /></label></div><div className="flex-1 space-y-2 overflow-y-auto px-5 pb-5">{people.map((person) => { const s = profileShifts(person); return <button key={person.employeeId} onClick={() => assigning ? assign(person) : remove(person, dialog.shift)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left hover:border-violet-300 hover:bg-violet-50"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-sm font-black text-violet-700">{String(person.fullName || "E").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{person.fullName}</strong><small className="text-slate-500">{person.employeeId} · {person.jobTitle}{s.length ? ` · ${profileBranch(person)} (${s.join(", ")})` : ""}</small></span><span className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assigning ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{assigning ? "Assign" : "Remove"}</span></button>; })}{!people.length && <div className="rounded-2xl border border-dashed bg-slate-50 py-12 text-center"><UserRoundSearch className="mx-auto text-slate-300" size={32} /><p className="mt-3 font-bold text-slate-700">No available employees found</p><p className="mt-1 text-sm text-slate-500">Check the position, status, or current assignment.</p></div>}</div></motion.section></motion.div>;
 }
 function Empty({ text }) { return <div className="p-12 text-center text-sm font-semibold text-slate-500">{text}</div>; }

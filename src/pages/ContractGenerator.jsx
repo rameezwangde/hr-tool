@@ -916,8 +916,23 @@ function ContractGenerator() {
     };
     
     saveContract(newContract);
+
+    const existingProfile = getStaffProfiles().find((profile) => profile.contractNumber === newContractNumber);
+    const empId = existingProfile?.employeeId || generateEmployeeId();
+
+    const newStaffProfile = {
+      ...getExportFormData(),
+      employeeId: empId,
+      employmentStatus: "Active",
+      assignedShift: "",
+      contractNumber: newContractNumber,
+      contractStatus: "Pending Signature",
+      createdAt: existingProfile?.createdAt || new Date().toISOString()
+    };
+
+    saveStaffProfile(newStaffProfile);
     setIsGenerated(true);
-    alert("Contract generated and saved as Pending Signature!");
+    alert("Contract generated and saved as Pending Signature! Staff profile created.");
   };
 
   const handleSaveDraft = () => {

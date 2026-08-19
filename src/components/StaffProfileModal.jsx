@@ -228,7 +228,13 @@ export default function StaffProfileModal({
 
   const handleEditChange = (event) => {
     const { checked, name, type, value } = event.target;
-    setEditForm((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+    setEditForm((current) => {
+      const updated = { ...current, [name]: type === "checkbox" ? checked : value };
+      if (name === "employmentStatus" && value === "Resigned" && !updated.lastWorkingDay) {
+        updated.lastWorkingDay = new Date().toISOString().split('T')[0];
+      }
+      return updated;
+    });
   };
 
   const saveProfileChanges = (event) => {
@@ -393,7 +399,15 @@ export default function StaffProfileModal({
         ],
       },
     };
-    const configuration = configurations[activeTab];
+    const configuration = { ...configurations[activeTab] };
+    if (activeTab === "employment" && editForm.employmentStatus === "Resigned") {
+      const statusIdx = configuration.fields.findIndex((f) => f.name === "employmentStatus");
+      if (statusIdx !== -1) {
+        const newFields = [...configuration.fields];
+        newFields.splice(statusIdx + 1, 0, { label: "Last Working Day", name: "lastWorkingDay", type: "date" });
+        configuration.fields = newFields;
+      }
+    }
 
     if (activeTab === "documents") {
       const employeeDocuments = editForm.employeeDocuments || [];
@@ -520,6 +534,9 @@ export default function StaffProfileModal({
           <SectionCard title="Position & Joining Details" subtitle="Current role and scheduling details">
             <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
               <InfoField label="Employment Status" value={getEmploymentStatus(profile)} />
+              {getEmploymentStatus(profile) === "Resigned" && (
+                <InfoField label="Last Working Day" value={formatDate(profile.lastWorkingDay)} />
+              )}
               <InfoField label="Position" value={profile.jobTitle} />
               <InfoField label="Starting Date" value={formatDate(joiningDate)} />
               <InfoField label="Location of Work" value={workLocation} wide />
@@ -888,6 +905,9 @@ export default function StaffProfileModal({
                   <h3 className="mb-4 font-bold text-slate-900">Employment Details</h3>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <EditField label="Employment Status" name="employmentStatus" value={editForm.employmentStatus || "Active"} onChange={handleEditChange} options={["Active", "Inactive", "Resigned"]} />
+                    {editForm.employmentStatus === "Resigned" && (
+                      <EditField label="Last Working Day" name="lastWorkingDay" value={editForm.lastWorkingDay || ""} onChange={handleEditChange} type="date" />
+                    )}
                     <EditField label="Assigned Shift" name="assignedShift" value={editForm.assignedShift || ""} onChange={handleEditChange} options={["", "Morning", "Evening"]} />
                     <EditField label="Position / Job Title" name="jobTitle" value={editForm.jobTitle} onChange={handleEditChange} />
                     <EditField label="Starting Date / Joining Date" name="joiningDate" value={editForm.joiningDate} onChange={handleEditChange} type="date" />

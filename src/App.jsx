@@ -3,10 +3,12 @@ import AppLayout from "./layouts/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import ContractGenerator from "./pages/ContractGenerator";
 import StaffProfiles from "./pages/StaffProfiles";
+import StaffRoster from "./pages/StaffRoster";
 import AdminSettings from "./pages/AdminSettings";
 import Documents from "./pages/Documents";
 import StaffStatusReport from "./pages/StaffStatusReport";
 import OrganizationChart from "./pages/OrganizationChart";
+import Payroll from "./pages/Payroll";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -37,8 +39,8 @@ function App() {
             <Route path="documents" element={<Documents />} />
             <Route path="staff-status-report" element={<StaffStatusReport />} />
             <Route path="interview-schedules" element={<ModulePlaceholder title="Interview Schedules" />} />
-            <Route path="staff-roster" element={<ModulePlaceholder title="Staff Roster" />} />
-            <Route path="payroll" element={<ModulePlaceholder title="Payroll" />} />
+            <Route path="staff-roster" element={<StaffRoster />} />
+            <Route path="payroll" element={<Payroll />} />
             <Route path="social-insurance" element={<ModulePlaceholder title="Social Insurance" />} />
             <Route path="chats" element={<ModulePlaceholder title="Chats & Announcements" />} />
             <Route path="exit-interviews" element={<ModulePlaceholder title="Exit Interviews" />} />
