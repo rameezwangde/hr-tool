@@ -245,3 +245,145 @@ export const validateAttendance = (draft, records) => {
   if (overlap) errors.push("Morning and Evening attendance times overlap.");
   return errors;
 };
+
+// ─── Excel Import Helpers ─────────────────────────────────────────────────────
+
+export const EXCEL_TEMPLATE_HEADERS = [
+  "Employee ID",
+  "Employee Name",
+  "Date",
+  "Shift",
+  "Status",
+  "Check In",
+  "Check Out",
+  "Break Minutes",
+  "Worked Hours",
+];
+
+const HEADER_ALIASES = {
+  "employee id":     "employeeId",
+  "employeeid":      "employeeId",
+  "id":              "employeeId",
+  "employee name":   "employeeName",
+  "employeename":    "employeeName",
+  "name":            "employeeName",
+  "date":            "date",
+  "shift":           "shift",
+  "status":          "status",
+  "check in":        "checkIn",
+  "checkin":         "checkIn",
+  "check out":       "checkOut",
+  "checkout":        "checkOut",
+  "break minutes":   "breakMinutes",
+  "breakminutes":    "breakMinutes",
+  "break":           "breakMinutes",
+  "worked hours":    "workedHours",
+  "workedhours":     "workedHours",
+  "hours":           "workedHours",
+};
+
+const normaliseDate = (raw) => {
+  if (!raw) return "";
+  // Handle Excel serial numbers
+  if (typeof raw === "number") {
+    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    return date.toISOString().slice(0, 10);
+  }
+  const str = String(raw).trim();
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // dd/mm/yyyy or dd-mm-yyyy
+  const parts = str.split(/[\/-]/);
+  if (parts.length === 3 && parts[2].length === 4) {
+    return `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+  }
+  // mm/dd/yyyy
+  if (parts.length === 3) {
+    try {
+      return new Date(str).toISOString().slice(0, 10);
+    } catch {
+      return str;
+    }
+  }
+  return str;
+};
+
+const normaliseTime = (raw) => {
+  if (!raw && raw !== 0) return "";
+  if (typeof raw === "number") {
+    // Excel time fraction: 0.5 = 12:00
+    const totalMinutes = Math.round(raw * 24 * 60);
+    const h = Math.floor(totalMinutes / 60) % 24;
+    const m = totalMinutes % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+  return String(raw).trim();
+};
+
+/**
+ * Convert raw rows from SheetJS (array of objects) into validated attendance records.
+ * @param {object[]} rawRows   - rows from xlsx.utils.sheet_to_json({ header: 1 }) but with header mapped
+ * @param {object[]} employees - active payroll employees (must have .employeeId and .fullName)
+ * @returns {{ matched: object[], skipped: { row: object, reason: string }[] }}
+ */
+export const parseExcelRows = (rawRows, employees) => {
+  const matched = [];
+  const skipped = [];
+  const employeeById = new Map(employees.map((e) => [String(e.employeeId).trim().toLowerCase(), e]));
+  const employeeByName = new Map(employees.map((e) => [String(e.fullName).trim().toLowerCase(), e]));
+
+  rawRows.forEach((raw, idx) => {
+    // Normalise header keys
+    const row = {};
+    Object.entries(raw).forEach(([key, val]) => {
+      const alias = HEADER_ALIASES[key.toLowerCase().trim()];
+      if (alias) row[alias] = val;
+    });
+
+    const rawId = String(row.employeeId || "").trim();
+    const rawName = String(row.employeeName || "").trim();
+    const rawDate = normaliseDate(row.date);
+
+    // Find employee
+    let employee =
+      employeeById.get(rawId.toLowerCase()) ||
+      employeeByName.get(rawName.toLowerCase());
+
+    if (!employee) {
+      skipped.push({ row: raw, rowIndex: idx + 2, reason: `No active employee matched ID "${rawId}" or name "${rawName}"` });
+      return;
+    }
+
+    if (!rawDate) {
+      skipped.push({ row: raw, rowIndex: idx + 2, reason: "Missing or invalid date" });
+      return;
+    }
+
+    const shiftRaw = String(row.shift || "Morning").trim();
+    const shift = /evening/i.test(shiftRaw) ? "Evening" : "Morning";
+    const status = row.status || "Present";
+    const checkIn = normaliseTime(row.checkIn);
+    const checkOut = normaliseTime(row.checkOut);
+    const breakMinutes = numberValue(row.breakMinutes);
+    let workedHours = numberValue(row.workedHours);
+    if (!workedHours && checkIn && checkOut) {
+      workedHours = calculateWorkedHours(checkIn, checkOut, breakMinutes);
+    }
+
+    matched.push({
+      id: `excel-${employee.employeeId}-${rawDate}-${shift}-${Date.now()}-${idx}`,
+      employeeId: employee.employeeId,
+      employeeName: employee.fullName,
+      date: rawDate,
+      shift,
+      status,
+      checkIn,
+      checkOut,
+      breakMinutes,
+      workedHours,
+    });
+  });
+
+  return { matched, skipped };
+};
+

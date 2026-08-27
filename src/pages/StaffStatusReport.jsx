@@ -39,52 +39,27 @@ const profileBranch = (profile) => {
   return String(profile.workLocation || profile.workLocation1 || profile.branch || profile.statusReportBranch || "").split(";")[0].trim();
 };
 
-const isManagementRole = (title) => {
-  if (!title) return false;
-  const managementTitles = [
-    "HR",
-    "Branch Manager",
-    "Purchase and Inventory Controller",
-    "Office Admin and Doument Controller",
-    "Accountant",
-    "Marketing Executive",
-  ];
-  if (managementTitles.includes(title)) return true;
-  const titleLower = title.toLowerCase();
-  return (
-    titleLower.includes("manager") ||
-    titleLower.includes("admin") ||
-    titleLower.includes("accountant") ||
-    titleLower.includes("controller") ||
-    titleLower.includes("hr") ||
-    titleLower.includes("director") ||
-    titleLower.includes("executive")
-  );
-};
-
 const profileShifts = (profile) => {
   const rawShifts = profile.assignedShifts || profile.assignedShift || "";
   if (Array.isArray(rawShifts)) return rawShifts;
-  const parsed = String(rawShifts)
+  return String(rawShifts)
     .split(";")
     .map((s) => s.trim())
     .filter(Boolean)
     .map((s) => (s.includes("@") ? s.split("@")[0].trim() : s));
-  if (parsed.length === 0 && isManagementRole(profile.jobTitle)) {
-    return ["8-5pm"];
-  }
-  return parsed;
 };
 
 const personHasShift = (profile, branch, shift) => {
   const assignments = profileShiftAssignments(profile);
-  if (isManagementRole(profile.jobTitle) && shift === "8-5pm") {
-    if (assignments.length === 0) {
-      const pBranch = profileBranch(profile);
-      return !branch || pBranch === branch;
-    }
-  }
   return assignments.some((a) => a.shift === shift && (!branch || a.branch === branch));
+};
+
+const personHasBranch = (profile, branch) => {
+  const assignments = profileShiftAssignments(profile);
+  if (assignments.length === 0) {
+    return profileBranch(profile) === branch;
+  }
+  return assignments.some((a) => a.branch === branch);
 };
 
 const cellKey = (branch, shift, position) => `${branch}::${shift}::${position}`;
@@ -204,7 +179,20 @@ export default function StaffStatusReport() {
     return allPositions.filter((pos) => getPositionDepartment(pos) === activeTab);
   }, [allPositions, getPositionDepartment, activeTab]);
 
-  const branches = useMemo(() => [...new Set([...locations.map((l) => l.name), ...candidateStaff.map(profileBranch)].filter(Boolean))], [locations, candidateStaff]);
+  const branches = useMemo(() => {
+    const list = [];
+    locations.forEach((l) => {
+      if (l.name) list.push(l.name);
+    });
+    candidateStaff.forEach((p) => {
+      profileShiftAssignments(p).forEach((a) => {
+        if (a.branch) list.push(a.branch);
+      });
+      const defaultB = String(p.workLocation || p.workLocation1 || p.branch || p.statusReportBranch || "").split(";")[0].trim();
+      if (defaultB) list.push(defaultB);
+    });
+    return [...new Set(list)].filter(Boolean);
+  }, [locations, candidateStaff]);
   const scheduled = candidateStaff.filter((p) => profileBranch(p) && profileShifts(p).length > 0);
   
   const departmentStaff = useMemo(() => {
@@ -226,13 +214,10 @@ export default function StaffStatusReport() {
   const shownBranches = branches;
   const shownPositions = positions;
   const shownShifts = useMemo(() => {
-    if (activeTab === "Management Staff") {
-      return ["8-5pm"];
-    }
     return ["Morning", "Evening"];
-  }, [activeTab]);
+  }, []);
 
-  const assigned = useCallback((branch, shift, position) => candidateStaff.filter((p) => (profileBranch(p) === branch || !profileBranch(p)) && personHasShift(p, branch, shift) && p.jobTitle === position), [candidateStaff]);
+  const assigned = useCallback((branch, shift, position) => candidateStaff.filter((p) => personHasShift(p, branch, shift) && p.jobTitle === position), [candidateStaff]);
   const required = useCallback((branch, shift, position) => Math.max(0, Number(config.requirements?.[cellKey(branch, shift, position)]) || 0), [config.requirements]);
   const visibleRows = () => shownShifts;
 
@@ -242,7 +227,7 @@ export default function StaffStatusReport() {
     branches.forEach((branch) => shownShifts.forEach((shift) => positions.forEach((position) => {
       const r = required(branch, shift, position), a = assigned(branch, shift, position).length;
       need += r; have += a;
-      if (shift === "Morning" || shift === "8-5pm") { morningNeed += r; morningHave += a; } 
+      if (shift === "Morning") { morningNeed += r; morningHave += a; } 
       else if (shift === "Evening") { eveningNeed += r; eveningHave += a; }
       if (a < r) weakBranches.add(branch);
     })));
@@ -256,7 +241,7 @@ export default function StaffStatusReport() {
   const openRemove = (branch = "", shift = "", position = "") => { setDialog({ mode: "remove", branch, shift, position }); setDialogSearch(""); };
   
   const assignPerson = (person) => {
-    const currentAssignments = String(person.assignedShift || person.assignedShifts || "").split(";").map((s) => s.trim()).filter(Boolean);
+    const currentAssignments = profileShiftAssignments(person).map(a => `${a.shift}@${a.branch}`);
     const newAssignment = `${dialog.shift}@${dialog.branch}`;
     if (currentAssignments.includes(newAssignment)) {
       setDialog(null);
@@ -277,7 +262,7 @@ export default function StaffStatusReport() {
   };
   
   const removePerson = (person, targetShift, targetBranch) => {
-    const currentAssignments = String(person.assignedShift || person.assignedShifts || "").split(";").map((s) => s.trim()).filter(Boolean);
+    const currentAssignments = profileShiftAssignments(person).map(a => `${a.shift}@${a.branch}`);
     const shiftToRemove = targetShift || dialog?.shift;
     const branchToRemove = targetBranch || dialog?.branch;
     const assignmentToRemove = `${shiftToRemove}@${branchToRemove}`;
@@ -295,11 +280,11 @@ export default function StaffStatusReport() {
   const dialogPeople = candidateStaff.filter((person) => {
     if (dialog?.mode === "assign") {
       if (person.jobTitle !== dialog.position) return false;
-      if (personHasShift(person, dialog.branch, dialog.shift)) return false;
+      if (personHasShift(person, null, dialog.shift)) return false;
     }
     if (dialog?.mode === "remove") {
       if (!profileShifts(person).length) return false;
-      if (dialog.branch && profileBranch(person) !== dialog.branch) return false;
+      if (dialog.branch && !personHasBranch(person, dialog.branch)) return false;
       if (dialog.shift && !personHasShift(person, dialog.branch, dialog.shift)) return false;
       if (dialog.position && person.jobTitle !== dialog.position) return false;
     }
@@ -313,16 +298,12 @@ export default function StaffStatusReport() {
       ["Scheduled Today", new Set(departmentScheduled.map((p) => p.employeeId)).size, UserCheck, "blue"],
       ["Open Positions", totals.open, BriefcaseBusiness, "rose"],
       ["Understaffed Branches", totals.weak, AlertTriangle, "amber"],
+      ["Morning Coverage", `${totals.morning}%`, SunMedium, "sky"],
+      ["Evening Coverage", `${totals.evening}%`, Sunset, "indigo"],
+      ["Overall Staffing", `${totals.overall}%`, LayoutGrid, "emerald"],
     ];
-    if (activeTab === "Management Staff") {
-      list.push(["Office Coverage", `${totals.morning}%`, SunMedium, "sky"]);
-    } else {
-      list.push(["Morning Coverage", `${totals.morning}%`, SunMedium, "sky"]);
-      list.push(["Evening Coverage", `${totals.evening}%`, Sunset, "indigo"]);
-    }
-    list.push(["Overall Staffing", `${totals.overall}%`, LayoutGrid, "emerald"]);
     return list;
-  }, [departmentStaff.length, departmentScheduled, totals, activeTab]);
+  }, [departmentStaff.length, departmentScheduled, totals]);
 
   return <div className="mx-auto max-w-full px-4 pb-4">
     <header className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -411,9 +392,9 @@ export default function StaffStatusReport() {
                       </th>
                     )}
                     <th className="sticky z-20 border-b border-r border-slate-200 bg-white px-2 py-2 align-middle" style={{ left: TABLE_COLUMN_WIDTHS.branch }}>
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black ${shift === "Morning" || shift === "8-5pm" ? "bg-sky-50 text-sky-700" : "bg-indigo-50 text-indigo-700"}`}>
-                        {shift === "Morning" || shift === "8-5pm" ? <SunMedium size={10} /> : <Sunset size={10} />}
-                        {shift}
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black ${shift === "Morning" ? "bg-sky-50 text-sky-700" : "bg-indigo-50 text-indigo-700"}`}>
+                        {shift === "Morning" ? <SunMedium size={10} /> : <Sunset size={10} />}
+                        {activeTab === "Management Staff" ? (shift === "Morning" ? "Morning (9:30-5:00)" : "Evening (4:40PM-12:00AM)") : shift}
                       </span>
                     </th>
                     {shownPositions.map((position) => {
@@ -449,8 +430,8 @@ export default function StaffStatusReport() {
             {visibleRows(branch).map((shift) => (
               <div key={shift} className="border-b p-3 last:border-0">
                 <h4 className="mb-2 flex items-center gap-1.5 font-black text-xs text-slate-700">
-                  {shift === "Morning" || shift === "8-5pm" ? <SunMedium size={14} /> : <Sunset size={14} />}
-                  {shift}
+                  {shift === "Morning" ? <SunMedium size={14} /> : <Sunset size={14} />}
+                  {activeTab === "Management Staff" ? (shift === "Morning" ? "Morning (9:30-5:00)" : "Evening (4:40PM-12:00AM)") : shift}
                 </h4>
                 <div className="space-y-1.5">
                   {shownPositions.map((position) => {

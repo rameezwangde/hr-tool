@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
 import { STAFF_PROFILE_TABS } from "../utils/staffProfileTabs";
+import { loadSlips } from "../utils/payroll";
 
 const formatDate = (value) => {
   if (!value) return "Not provided";
@@ -619,6 +620,10 @@ export default function StaffProfileModal({
     }
 
     if (activeTab === "financial") {
+      const slips = loadSlips();
+      const employeeSlips = slips.filter(slip => String(slip.employeeId) === String(profile.employeeId));
+      const paidSlips = employeeSlips.filter(slip => slip.status === "Paid");
+
       return (
         <div className="grid gap-5 xl:grid-cols-2">
           <SectionCard title="Bank Account Details" subtitle="Employee bank account details for salary payments">
@@ -660,16 +665,44 @@ export default function StaffProfileModal({
             </div>
           </SectionCard>
           <SectionCard title="Payroll History" subtitle="Historical record of salary payments">
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center">
-              <p className="font-bold text-slate-800 text-lg">Coming Soon</p>
-              <p className="mt-2 text-sm leading-6 text-slate-500 max-w-md mx-auto">Payroll history and pay slips will be managed in another module.</p>
-            </div>
+            {paidSlips.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {paidSlips.map(slip => (
+                  <div key={slip.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                    <div>
+                      <p className="font-bold text-slate-800">{slip.month}</p>
+                      <p className="text-xs text-slate-500">Paid on {formatDate(slip.paymentDate)}</p>
+                    </div>
+                    <span className="font-black text-emerald-600">{formatMoney(slip.finalPayable)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
+                <p className="font-bold text-slate-800 text-sm">No Payroll History</p>
+                <p className="mt-1 text-xs text-slate-500">No paid salary slips found for this employee.</p>
+              </div>
+            )}
           </SectionCard>
           <SectionCard title="Bonus History" subtitle="Track performance bonus distribution">
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center">
-              <p className="font-bold text-slate-800 text-lg">Coming Soon</p>
-              <p className="mt-2 text-sm leading-6 text-slate-500 max-w-md mx-auto">Bonus history details will come from another tab.</p>
-            </div>
+            {paidSlips.filter(s => s.calculation?.employee?.bonus > 0).length > 0 ? (
+              <div className="overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {paidSlips.filter(s => s.calculation?.employee?.bonus > 0).map(slip => (
+                  <div key={slip.id} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                    <div>
+                      <p className="font-bold text-slate-800">{slip.month}</p>
+                      <p className="text-xs text-slate-500">From {slip.month} payroll</p>
+                    </div>
+                    <span className="font-black text-violet-600">{formatMoney(slip.calculation?.employee?.bonus)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
+                <p className="font-bold text-slate-800 text-sm">No Bonus History</p>
+                <p className="mt-1 text-xs text-slate-500">No bonuses recorded in past payrolls.</p>
+              </div>
+            )}
           </SectionCard>
         </div>
       );

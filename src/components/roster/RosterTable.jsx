@@ -5,7 +5,7 @@ import { daysInMonth, getCellEntries, positionTone, requirementFor, rosterCellKe
 const ROSTER_COLUMN_WIDTHS = {
   branch: 112,
   position: 240,
-  day: 105,
+  day: 140,
 };
 
 function staffingTone(required, assigned) {
@@ -77,7 +77,7 @@ export default function RosterTable({ month, branches, positions, roster, requir
                         <td className="sticky z-20 border-b border-r border-slate-200 bg-white p-1.5 align-middle" style={{ left: ROSTER_COLUMN_WIDTHS.branch }}>
                           <div className={`flex h-full flex-col justify-center rounded border px-2 py-1.5 ${positionTone(position, department)}`}>
                             <p className="text-[11px] font-black leading-tight">{position}</p>
-                            <p className="mt-0.5 text-[9px] font-bold">{shift === "Morning" ? "M" : "E"} / {shift}</p>
+                            <p className="mt-0.5 text-[9px] font-bold">{shift === "Morning" ? "Morning (9:30-5:00)" : "Evening (4:40PM-12:00AM)"}</p>
                           </div>
                         </td>
                         {days.map((day) => {
@@ -86,11 +86,11 @@ export default function RosterTable({ month, branches, positions, roster, requir
                           const workingCount = entries.filter((entry) => entry.status === "Working").length;
                           const required = requirementFor(requirements, branch, shift, position);
                           return (
-                            <td key={key} className={`border-b border-r border-slate-200 p-1 align-middle ${day.isToday ? "bg-violet-50/40" : day.isWeekend ? "bg-slate-50" : "bg-white"}`}>
+                          <td key={key} className={`border-b border-r border-slate-200 p-1 align-middle ${day.isToday ? "bg-violet-50/40" : day.isWeekend ? "bg-slate-50" : "bg-white"}`}>
                               <button
                                 type="button"
                                 onClick={() => onCellClick({ branch, department, position, shift, date: day.date })}
-                                className={`group relative flex h-10 w-full flex-col items-center justify-center rounded border border-transparent pr-6 transition-all ${staffingTone(required, workingCount)}`}
+                                className={`group relative flex h-auto min-h-10 w-full flex-col items-start justify-start rounded border border-transparent p-1.5 pr-6 transition-all ${staffingTone(required, workingCount)}`}
                                 title="Assign employee"
                               >
                                 <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded bg-white/75 text-current shadow-sm ring-1 ring-black/5 transition group-hover:bg-white">
@@ -98,6 +98,9 @@ export default function RosterTable({ month, branches, positions, roster, requir
                                 </span>
                                 <span className="text-[11px] font-black">{workingCount} / {required || 0}</span>
                                 <span className="text-[9px] font-bold uppercase tracking-wider opacity-80">{staffingLabel(required, workingCount)}</span>
+                                {entries.filter((e) => e.status === "Working" && e.employeeName).map((e) => (
+                                  <span key={e.id} className="mt-0.5 block w-full truncate text-[9px] font-semibold leading-tight opacity-90">{e.employeeName}</span>
+                                ))}
                               </button>
                             </td>
                           );
