@@ -356,7 +356,7 @@ export default function StaffStatusReport() {
       </div>
 
       <section className="mt-3 hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[72vh]">
           <table
             className="min-w-max table-fixed border-separate border-spacing-0 text-left text-xs"
             style={{
@@ -496,48 +496,54 @@ function PositionHead({ position, required, assigned }) {
 
 function StaffCell({ branch, shift, position, people, required, tone, editNeeds, updateNeed, openAssign, removePerson, setSelectedProfile }) {
   return (
-    <td onClick={() => openAssign(branch, shift, position)} className={`cursor-pointer border-b border-r p-1.5 align-middle transition hover:ring-2 hover:ring-inset hover:ring-violet-300 ${tone.cell}`}>
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center justify-between mb-0.5 border-b border-current/10 pb-0.5">
-          <span className="text-[9px] font-bold opacity-60">Staff ({people.length})</span>
-          <button 
-            type="button" 
-            onClick={(e) => { e.stopPropagation(); openAssign(branch, shift, position); }}
-            className="flex h-4 w-4 items-center justify-center rounded bg-black/5 hover:bg-black/10 text-current transition-colors"
-            title="Assign employee"
-          >
-            <Plus size={10} />
-          </button>
-        </div>
-        <AnimatePresence initial={false}>
-          {people.map((person) => (
-            <motion.div
-              layout
-              initial={{ opacity: 0, scale: .95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: .95 }}
-              key={person.employeeId}
-              onClick={(e) => { e.stopPropagation(); setSelectedProfile(person); }}
-              className="group relative flex items-center justify-between gap-1 rounded bg-white px-1.5 py-0.5 shadow-sm hover:border-violet-200"
+    <td onClick={() => openAssign(branch, shift, position)} className={`cursor-pointer border-b border-r p-2 align-top transition hover:ring-2 hover:ring-inset hover:ring-violet-300 ${tone.cell}`}>
+      <div className="flex min-h-[92px] flex-col justify-between gap-1.5">
+        <div>
+          <div className="flex items-center justify-between mb-1 border-b border-current/10 pb-1">
+            <span className="text-[10px] font-bold opacity-70">Staff ({people.length})</span>
+            <button 
+              type="button" 
+              onClick={(e) => { e.stopPropagation(); openAssign(branch, shift, position); }}
+              className="flex h-5 w-5 items-center justify-center rounded bg-black/5 hover:bg-black/10 text-current transition-colors"
+              title="Assign employee"
             >
-              <span className="truncate text-[11px] font-bold text-slate-800" title={person.fullName}>{person.fullName}</span>
-              <button type="button" onClick={(e) => { e.stopPropagation(); removePerson(person, shift, branch); }} className="text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100">
-                <X size={11} />
-              </button>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {!people.length && (
-          <span className="text-center text-[10px] font-bold text-slate-400 border border-dashed border-slate-200 py-1 rounded">Assign</span>
-        )}
-        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-between pt-0.5 text-[10px] font-bold opacity-75">
+              <Plus size={11} />
+            </button>
+          </div>
+          <div className="space-y-1 max-h-[140px] overflow-y-auto pr-0.5">
+            <AnimatePresence initial={false}>
+              {people.map((person) => (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, scale: .95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: .95 }}
+                  key={person.employeeId}
+                  onClick={(e) => { e.stopPropagation(); setSelectedProfile(person); }}
+                  className="group relative flex items-center justify-between gap-1 rounded border border-slate-200/80 bg-white px-2 py-1 shadow-sm hover:border-violet-300"
+                >
+                  <span className="truncate text-[11px] font-bold text-slate-800" title={person.fullName}>{person.fullName}</span>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); removePerson(person, shift, branch); }} className="text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <X size={12} />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {!people.length && (
+              <span className="block text-center text-[11px] font-semibold text-slate-400 border border-dashed border-slate-300 py-1.5 rounded bg-white/40 hover:bg-white/70">
+                + Add staff
+              </span>
+            )}
+          </div>
+        </div>
+        <div onClick={(e) => e.stopPropagation()} className="flex items-center justify-between pt-1 border-t border-current/10 text-[10px] font-bold opacity-80">
           {editNeeds ? (
             <label className="flex items-center gap-1">
-              <span>Req</span>
-              <input className="h-6 w-10 rounded border bg-white text-center text-xs font-black text-slate-900" type="number" min="0" value={required} onChange={(e) => updateNeed(branch, shift, position, e.target.value)} />
+              <span>Req:</span>
+              <input className="h-6 w-11 rounded border border-slate-300 bg-white text-center text-xs font-black text-slate-900 shadow-sm" type="number" min="0" value={required} onChange={(e) => updateNeed(branch, shift, position, e.target.value)} />
             </label>
           ) : (
-            <span className="ml-auto">{people.length}/{required}</span>
+            <span className="ml-auto text-[11px]">{people.length}/{required}</span>
           )}
         </div>
       </div>
