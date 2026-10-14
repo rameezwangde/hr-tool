@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BriefcaseBusiness, Building2, Calendar, CalendarDays, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, Save, Search, SunMedium, Sunset, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Building2, Calendar, CalendarDays, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, RotateCcw, Save, Search, Sparkles, SunMedium, Sunset, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
 import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
-import { getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, updateStaffProfile } from "../utils/storage";
+import { getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, saveWorkLocation, updateStaffProfile } from "../utils/storage";
 import { daysInMonth, getCellEntries, loadRosterData, monthKey, rosterCellKey, saveRosterData, buildRosterEntry } from "../utils/roster";
 
 const REPORT_KEY = "staffStatusReportConfigV2";
@@ -208,19 +208,27 @@ export default function StaffStatusReport() {
     return getPositionDepartment(p.jobTitle);
   }, [getPositionDepartment]);
 
+  const defaultPositionsByDept = useMemo(() => ({
+    "Kitchen Staff": ["Cashier", "Dough", "Cooking", "Wrapping", "Helping"],
+    "Management Staff": ["Branch Manager", "HR", "Accountant", "Purchase and Inventory Controller", "Office Admin and Doument Controller", "Marketing Executive"]
+  }), []);
+
   const allPositions = useMemo(() => {
     const drafts = getContractDrafts();
+    const defaults = [...defaultPositionsByDept["Kitchen Staff"], ...defaultPositionsByDept["Management Staff"]];
     return [...new Set([
+      ...defaults,
       ...jobs.map((j) => j.title),
       ...candidateStaff.map((p) => p.jobTitle),
       ...contracts.map((c) => c.jobTitle),
       ...drafts.map((d) => d.formData?.jobTitle),
     ].filter(Boolean))];
-  }, [jobs, candidateStaff, contracts]);
+  }, [jobs, candidateStaff, contracts, defaultPositionsByDept]);
 
   const positions = useMemo(() => {
-    return allPositions.filter((pos) => getPositionDepartment(pos) === activeTab);
-  }, [allPositions, getPositionDepartment, activeTab]);
+    const list = allPositions.filter((pos) => getPositionDepartment(pos) === activeTab);
+    return list.length ? list : (defaultPositionsByDept[activeTab] || []);
+  }, [allPositions, getPositionDepartment, activeTab, defaultPositionsByDept]);
 
   const branches = useMemo(() => {
     const list = [];
@@ -234,7 +242,8 @@ export default function StaffStatusReport() {
       const defaultB = String(p.workLocation || p.workLocation1 || p.branch || p.statusReportBranch || "").split(";")[0].trim();
       if (defaultB) list.push(defaultB);
     });
-    return [...new Set(list)].filter(Boolean);
+    const unique = [...new Set(list)].filter(Boolean);
+    return unique.length ? unique : ["Dubai", "Abu Dhabi"];
   }, [locations, candidateStaff]);
 
   const departmentStaff = useMemo(() => {
@@ -424,6 +433,120 @@ export default function StaffStatusReport() {
   const [yearStr, monthNumStr] = selectedMonth.split("-");
   const monthName = new Date(Number(yearStr), Number(monthNumStr) - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const selectedDayFormatted = new Date(selectedDay).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const populateTestData = () => {
+    // 1. Ensure Dubai and Abu Dhabi exist in work locations
+    const currentLocs = getWorkLocations();
+    const locNames = currentLocs.map(l => l.name);
+    if (!locNames.includes("Dubai")) {
+      saveWorkLocation("Dubai");
+    }
+    if (!locNames.includes("Abu Dhabi")) {
+      saveWorkLocation("Abu Dhabi");
+    }
+
+    // 2. Sample staff with roles across Kitchen and Management
+    const testStaff = [
+      { employeeId: "EMP-1001", fullName: "Ahmed Al Mansoori", jobTitle: "Cashier", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 111 2233" },
+      { employeeId: "EMP-1002", fullName: "Fatima Noor", jobTitle: "Cashier", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 222 3344" },
+      { employeeId: "EMP-1003", fullName: "Chef Maria Santos", jobTitle: "Cooking", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 333 4455" },
+      { employeeId: "EMP-1004", fullName: "Tariq Mahmoud", jobTitle: "Cooking", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 444 5566" },
+      { employeeId: "EMP-1005", fullName: "Elena Rostova", jobTitle: "Dough", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 555 6677" },
+      { employeeId: "EMP-1006", fullName: "Hassan Ali", jobTitle: "Wrapping", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 666 7788" },
+      { employeeId: "EMP-1007", fullName: "Kavita Patel", jobTitle: "Helping", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 777 8899" },
+      { employeeId: "EMP-1008", fullName: "Rami Haddad", jobTitle: "Branch Manager", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 888 9900" },
+      { employeeId: "EMP-1009", fullName: "Sara Jenkins", jobTitle: "HR", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 999 0011" },
+      { employeeId: "EMP-1010", fullName: "Omar Qasim", jobTitle: "Accountant", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 123 4567" },
+      // Abu Dhabi branch staff
+      { employeeId: "EMP-1011", fullName: "Bilal Khan", jobTitle: "Cashier", workLocation: "Abu Dhabi", assignedShift: "Morning@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 333 1122" },
+      { employeeId: "EMP-1012", fullName: "Zayn Malik", jobTitle: "Cooking", workLocation: "Abu Dhabi", assignedShift: "Evening@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 444 2233" },
+    ];
+
+    testStaff.forEach(p => saveStaffProfile(p));
+
+    // 3. Set standard requirements for Dubai & Abu Dhabi
+    const newRequirements = { ...config.requirements };
+    const branchesToSet = ["Dubai", "Abu Dhabi"];
+    const shiftsToSet = ["Morning", "Evening"];
+    const kitchenPos = ["Cashier", "Dough", "Cooking", "Wrapping", "Helping"];
+    const mgmtPos = ["Branch Manager", "HR", "Accountant"];
+
+    branchesToSet.forEach(b => {
+      shiftsToSet.forEach(s => {
+        kitchenPos.forEach(pos => {
+          newRequirements[cellKey(b, s, pos)] = 2;
+        });
+        mgmtPos.forEach(pos => {
+          newRequirements[cellKey(b, s, pos)] = 1;
+        });
+      });
+    });
+
+    saveConfig({ ...config, requirements: newRequirements });
+
+    // 4. Populate active roster day schedules for current viewing day and next few days
+    const currentRoster = { ...roster };
+    const daysToSeed = [selectedDay];
+    
+    // Also seed a couple more days in this month
+    const [y, m] = selectedMonth.split("-");
+    const d1 = `${y}-${m}-01`;
+    const d15 = `${y}-${m}-15`;
+    if (!daysToSeed.includes(d1)) daysToSeed.push(d1);
+    if (!daysToSeed.includes(d15)) daysToSeed.push(d15);
+
+    daysToSeed.forEach(date => {
+      testStaff.forEach(p => {
+        const assignments = profileShiftAssignments(p);
+        assignments.forEach(a => {
+          const dept = getPositionDepartment(p.jobTitle);
+          const rKey = rosterCellKey({
+            month: selectedMonth,
+            branch: a.branch,
+            department: dept,
+            position: p.jobTitle,
+            shift: a.shift,
+            date,
+          });
+          const existing = currentRoster[rKey] || [];
+          if (!existing.some(e => e.employeeId === p.employeeId)) {
+            currentRoster[rKey] = [
+              ...existing,
+              buildRosterEntry({
+                employee: p,
+                date,
+                branch: a.branch,
+                department: dept,
+                position: p.jobTitle,
+                shift: a.shift,
+                status: "Working",
+              })
+            ];
+          }
+        });
+      });
+    });
+
+    try {
+      saveRosterData(currentRoster);
+      const updatedProfiles = getStaffProfiles();
+      const updatedLocations = getWorkLocations();
+      
+      setProfiles([...updatedProfiles]);
+      setLocations([...updatedLocations]);
+      setRoster({ ...currentRoster });
+      
+      // Dispatch events so all tabs & components sync
+      window.dispatchEvent(new Event("staffProfilesChanged"));
+      window.dispatchEvent(new Event("workLocationsChanged"));
+      window.dispatchEvent(new Event("staffRosterChanged"));
+      
+      // Small feedback alert or notification
+      window.alert("Test data populated successfully with 12 employees, 2 branches, and scheduled shifts!");
+    } catch (err) {
+      console.error("Failed to populate test data:", err);
+      window.alert("Error populating test data: " + err.message);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-full px-4 pb-8">
@@ -435,6 +558,7 @@ export default function StaffStatusReport() {
             <p className="text-xs text-slate-300 font-medium mt-0.5">Real-time daily staffing overview, position requirements, and assignment tracking.</p>
           </div>
           <div className="flex flex-wrap gap-2 no-print">
+            <Action icon={Sparkles} label="Load Test Data" onClick={populateTestData} />
             <Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save" : "Edit Required"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} />
             <Action icon={Plus} label="Assign" primary={!editNeeds} onClick={() => openAssign()} />
             <Action icon={MinusCircle} label="Remove" onClick={() => openRemove()} />
@@ -776,7 +900,7 @@ function StaffCell({ branch, shift, position, people, required, tone, editNeeds,
                   className="group relative flex items-center justify-between gap-1 rounded border border-slate-200/80 bg-white px-2 py-1 shadow-sm hover:border-violet-300"
                 >
                   <span className="truncate text-[11px] font-bold text-slate-800" title={person.fullName}>{person.fullName}</span>
-                  <button type="button" onClick={(e) => { e.stopPropagation(); removePerson(person, shift, branch); }} className="text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); removePerson(person, shift, branch, position); }} className="text-slate-400 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity">
                     <X size={12} />
                   </button>
                 </motion.div>
@@ -806,6 +930,6 @@ function StaffCell({ branch, shift, position, people, required, tone, editNeeds,
 
 function AssignDialog({ dialog, setDialog, branches, positions, people, search, setSearch, assign, remove, profileShifts, profileBranch, shifts }) {
   const assigning = dialog.mode === "assign";
-  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDialog(null)} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><motion.section initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12 }} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex justify-between border-b p-5"><div><p className="text-xs font-black uppercase tracking-wider text-violet-600">Quick Action</p><h2 className="mt-1 text-xl font-black">{assigning ? "Assign Employee" : "Remove Assignment"}</h2><p className="mt-1 text-sm text-slate-500">{assigning ? "Active employees in this position eligible for shift assignment." : "Choose a scheduled employee to remove."}</p></div><button onClick={() => setDialog(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100"><X size={17} /></button></header><div className="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-3"><Select label="Branch" value={dialog.branch} options={branches} all="All branches" change={(v) => setDialog({ ...dialog, branch: v })} /><Select label="Shift" value={dialog.shift} options={shifts} all="All shifts" change={(v) => setDialog({ ...dialog, shift: v })} /><Select label="Position" value={dialog.position} options={positions} all="All positions" change={(v) => setDialog({ ...dialog, position: v })} /></div><div className="p-5"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input autoFocus className="input-field pl-10" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, ID, or phone" /></label></div><div className="flex-1 space-y-2 overflow-y-auto px-5 pb-5">{people.map((person) => { const s = profileShifts(person); return <button key={person.employeeId} onClick={() => assigning ? assign(person) : remove(person, dialog.shift)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left hover:border-violet-300 hover:bg-violet-50"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-sm font-black text-violet-700">{String(person.fullName || "E").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{person.fullName}</strong><small className="text-slate-500">{person.employeeId} · {person.jobTitle}{s.length ? ` · ${profileBranch(person)} (${s.join(", ")})` : ""}</small></span><span className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assigning ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{assigning ? "Assign" : "Remove"}</span></button>; })}{!people.length && <div className="rounded-2xl border border-dashed bg-slate-50 py-12 text-center"><UserRoundSearch className="mx-auto text-slate-300" size={32} /><p className="mt-3 font-bold text-slate-700">No available employees found</p><p className="mt-1 text-sm text-slate-500">Check the position, status, or current assignment.</p></div>}</div></motion.section></motion.div>;
+  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDialog(null)} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><motion.section initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12 }} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex justify-between border-b p-5"><div><p className="text-xs font-black uppercase tracking-wider text-violet-600">Quick Action</p><h2 className="mt-1 text-xl font-black">{assigning ? "Assign Employee" : "Remove Assignment"}</h2><p className="mt-1 text-sm text-slate-500">{assigning ? "Active employees in this position eligible for shift assignment." : "Choose a scheduled employee to remove."}</p></div><button onClick={() => setDialog(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100"><X size={17} /></button></header><div className="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-3"><Select label="Branch" value={dialog.branch} options={branches} all="All branches" change={(v) => setDialog({ ...dialog, branch: v })} /><Select label="Shift" value={dialog.shift} options={shifts} all="All shifts" change={(v) => setDialog({ ...dialog, shift: v })} /><Select label="Position" value={dialog.position} options={positions} all="All positions" change={(v) => setDialog({ ...dialog, position: v })} /></div><div className="p-5"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input autoFocus className="input-field pl-10" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, ID, or phone" /></label></div><div className="flex-1 space-y-2 overflow-y-auto px-5 pb-5">{people.map((person) => { const s = profileShifts(person); return <button key={person.employeeId} onClick={() => assigning ? assign(person) : remove(person, dialog.shift, dialog.branch, dialog.position)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left hover:border-violet-300 hover:bg-violet-50"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-sm font-black text-violet-700">{String(person.fullName || "E").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{person.fullName}</strong><small className="text-slate-500">{person.employeeId} · {person.jobTitle}{s.length ? ` · ${profileBranch(person)} (${s.join(", ")})` : ""}</small></span><span className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assigning ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{assigning ? "Assign" : "Remove"}</span></button>; })}{!people.length && <div className="rounded-2xl border border-dashed bg-slate-50 py-12 text-center"><UserRoundSearch className="mx-auto text-slate-300" size={32} /><p className="mt-3 font-bold text-slate-700">No available employees found</p><p className="mt-1 text-sm text-slate-500">Check the position, status, or current assignment.</p></div>}</div></motion.section></motion.div>;
 }
 function Empty({ text }) { return <div className="p-12 text-center text-sm font-semibold text-slate-500">{text}</div>; }
