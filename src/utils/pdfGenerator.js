@@ -47,7 +47,7 @@ export const exportToPDF = async (elementId, filename = "document.pdf") => {
   });
 
   // Temporarily expand scrollable child containers so html2canvas captures the full size
-  const scrollContainers = element.querySelectorAll('.overflow-auto, .overflow-scroll, [class*="max-h-"]');
+  const scrollContainers = element.querySelectorAll('.overflow-auto, .overflow-scroll, [class*="max-h-"], [class*="overflow-x-"]');
   const restoredStyles = [];
   scrollContainers.forEach(container => {
     restoredStyles.push({
@@ -55,6 +55,7 @@ export const exportToPDF = async (elementId, filename = "document.pdf") => {
       maxHeight: container.style.maxHeight,
       height: container.style.height,
       overflow: container.style.overflow,
+      width: container.style.width,
       className: container.className
     });
     container.style.maxHeight = 'none';
@@ -65,48 +66,45 @@ export const exportToPDF = async (elementId, filename = "document.pdf") => {
   });
 
   try {
+    const fullWidth = Math.max(element.scrollWidth, element.offsetWidth, 1200);
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
       logging: false,
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+      backgroundColor: "#ffffff",
+      windowWidth: fullWidth + 100,
+      windowHeight: element.scrollHeight + 100,
     });
 
     const imgData = canvas.toDataURL('image/png');
 
     // Automatically choose orientation based on element dimensions
-    const isLandscape = canvas.width > canvas.height;
+    const isLandscape = canvas.width >= canvas.height;
     const pdf = new jsPDF({
       orientation: isLandscape ? 'landscape' : 'portrait',
       unit: 'mm',
       format: 'a4',
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();   // 210mm (portrait) or 297mm (landscape)
-    const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm (portrait) or 210mm (landscape)
+    const pdfWidth = pdf.internal.pageSize.getWidth();   // 297mm (landscape) or 210mm (portrait)
+    const pdfHeight = pdf.internal.pageSize.getHeight(); // 210mm (landscape) or 297mm (portrait)
 
-    // Canvas dimensions in mm (matching the pdf page width)
-    const canvasWidthMm = pdfWidth;
+    const margin = 8;
+    const usableWidth = pdfWidth - (margin * 2);
+    const canvasWidthMm = usableWidth;
     const canvasHeightMm = (canvas.height / canvas.width) * canvasWidthMm;
 
-    // How many pages do we need?
-    const totalPages = Math.ceil(canvasHeightMm / pdfHeight);
+    const usableHeight = pdfHeight - (margin * 2);
+    const totalPages = Math.ceil(canvasHeightMm / usableHeight);
 
     for (let page = 0; page < totalPages; page++) {
       if (page > 0) pdf.addPage();
-
-      // y offset in mm for this page
-      const yOffsetMm = page * pdfHeight;
-
-      // Add image positioned so only the current page's slice is visible
+      const yOffsetMm = page * usableHeight;
       pdf.addImage(
         imgData,
         'PNG',
-        0,
-        -yOffsetMm,          // shift image up by the page offset
+        margin,
+        margin - yOffsetMm,
         canvasWidthMm,
         canvasHeightMm
       );
@@ -134,6 +132,7 @@ export const exportToPDF = async (elementId, filename = "document.pdf") => {
       item.element.style.maxHeight = item.maxHeight;
       item.element.style.height = item.height;
       item.element.style.overflow = item.overflow;
+      if (item.width !== undefined) item.element.style.width = item.width;
       item.element.className = item.className;
     });
   }

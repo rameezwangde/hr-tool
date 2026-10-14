@@ -1,26 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertTriangle, BriefcaseBusiness, Building2, Download, Filter, LayoutGrid, MinusCircle, Plus, Printer, Save, Search, SunMedium, Sunset, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Building2, Calendar, CalendarDays, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, Save, Search, SunMedium, Sunset, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
 import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
 import { getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, updateStaffProfile } from "../utils/storage";
+import { daysInMonth, getCellEntries, loadRosterData, monthKey, rosterCellKey, saveRosterData, buildRosterEntry } from "../utils/roster";
 
 const REPORT_KEY = "staffStatusReportConfigV2";
 const TABLE_COLUMN_WIDTHS = {
-  branch: 128,
+  branch: 130,
   shift: 104,
   position: 210,
   notes: 192,
 };
 const cardTones = {
-  violet: "bg-violet-50 text-violet-600", blue: "bg-blue-50 text-blue-600", rose: "bg-rose-50 text-rose-600",
-  amber: "bg-amber-50 text-amber-600", sky: "bg-sky-50 text-sky-600", indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600",
+  violet: "bg-violet-50 text-violet-600",
+  blue: "bg-blue-50 text-blue-600",
+  rose: "bg-rose-50 text-rose-600",
 };
 
 const loadConfig = () => {
   try { return JSON.parse(localStorage.getItem(REPORT_KEY) || "{}") || {}; }
   catch { return {}; }
 };
+
 const profileShiftAssignments = (profile) => {
   const shifts = String(profile.assignedShift || "").split(";").map((s) => s.trim()).filter(Boolean);
   return shifts.map((s) => {
@@ -63,9 +66,8 @@ const personHasBranch = (profile, branch) => {
 };
 
 const cellKey = (branch, shift, position) => `${branch}::${shift}::${position}`;
-const noteKey = (branch, shift) => `${branch}::${shift}`;
+const noteKey = (branch, shift, date) => date ? `${branch}::${shift}::${date}` : `${branch}::${shift}`;
 const eligible = (profile) => (profile.contractStatus === "Signed" || profile.contractStatus === "Pending Signature" || !profile.contractStatus) && (profile.employmentStatus || "Active") !== "Inactive";
-const pct = (assigned, required) => required ? Math.min(100, Math.round(assigned / required * 100)) : 100;
 
 const toneFor = (required, assigned) => {
   if (!required) return { key: "none", label: "No requirement", cell: "border-slate-200 bg-slate-50 text-slate-500", badge: "bg-slate-200 text-slate-600", dot: "bg-slate-400" };
@@ -73,35 +75,80 @@ const toneFor = (required, assigned) => {
   return { key: "met", label: "", cell: "border-slate-200 bg-white text-slate-700", badge: "hidden", dot: "bg-slate-300" };
 };
 
+function addMonths(month, diff) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const date = new Date(year, monthIndex - 1 + diff, 1);
+  return date.toISOString().slice(0, 7);
+}
+
 export default function StaffStatusReport() {
   const [profiles, setProfiles] = useState(getStaffProfiles);
   const [contracts, setContracts] = useState(getContracts);
   const [jobs, setJobs] = useState(getJobPositions);
   const [locations, setLocations] = useState(getWorkLocations);
   const [config, setConfig] = useState(loadConfig);
+  const [roster, setRoster] = useState(() => loadRosterData());
   const [editNeeds, setEditNeeds] = useState(false);
   const [dialog, setDialog] = useState(null);
   const [dialogSearch, setDialogSearch] = useState("");
   const [selectedProfile, setSelectedProfile] = useState(null);
   const [activeTab, setActiveTab] = useState("Kitchen Staff");
 
+  // Date controls: Month, Week, Day
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [selectedMonth, setSelectedMonth] = useState(() => monthKey());
+  const [selectedWeek, setSelectedWeek] = useState("all");
+  const [selectedDay, setSelectedDay] = useState(todayStr);
+
   useEffect(() => {
     const staff = () => setProfiles(getStaffProfiles());
     const contractList = () => setContracts(getContracts());
     const positions = () => setJobs(getJobPositions());
     const branches = () => setLocations(getWorkLocations());
-    const all = () => { staff(); contractList(); positions(); branches(); };
+    const syncRoster = () => setRoster(loadRosterData());
+    const all = () => { staff(); contractList(); positions(); branches(); syncRoster(); };
     window.addEventListener("staffProfilesChanged", staff);
     window.addEventListener("jobPositionsChanged", positions);
     window.addEventListener("workLocationsChanged", branches);
+    window.addEventListener("staffRosterChanged", syncRoster);
     window.addEventListener("storage", all);
     return () => {
       window.removeEventListener("staffProfilesChanged", staff);
       window.removeEventListener("jobPositionsChanged", positions);
       window.removeEventListener("workLocationsChanged", branches);
+      window.removeEventListener("staffRosterChanged", syncRoster);
       window.removeEventListener("storage", all);
     };
   }, []);
+
+  const monthDaysList = useMemo(() => {
+    return daysInMonth(selectedMonth);
+  }, [selectedMonth]);
+
+  // Keep selectedDay valid when selectedMonth changes
+  useEffect(() => {
+    if (!selectedDay.startsWith(selectedMonth)) {
+      const firstDay = monthDaysList[0]?.date || `${selectedMonth}-01`;
+      setSelectedDay(firstDay);
+    }
+  }, [selectedMonth, selectedDay, monthDaysList]);
+
+  // Filter days by week
+  const filteredDays = useMemo(() => {
+    if (selectedWeek === "1") return monthDaysList.slice(0, 7);
+    if (selectedWeek === "2") return monthDaysList.slice(7, 14);
+    if (selectedWeek === "3") return monthDaysList.slice(14, 21);
+    if (selectedWeek === "4") return monthDaysList.slice(21, 28);
+    if (selectedWeek === "5") return monthDaysList.slice(28);
+    return monthDaysList;
+  }, [monthDaysList, selectedWeek]);
+
+  // If active selected day is outside current week filter, adjust selected day
+  useEffect(() => {
+    if (filteredDays.length && !filteredDays.some(d => d.date === selectedDay)) {
+      setSelectedDay(filteredDays[0].date);
+    }
+  }, [filteredDays, selectedDay]);
 
   const candidateStaff = useMemo(() => {
     const staffMap = new Map();
@@ -115,12 +162,9 @@ export default function StaffStatusReport() {
 
   const getPositionDepartment = useCallback((title) => {
     if (!title) return "Kitchen Staff";
-
-    // 1. Check configured jobs from getJobPositions()
     const job = jobs.find((j) => j.title === title);
     if (job?.department) return job.department;
 
-    // 2. Direct default mappings for standard roles to avoid misclassification from defaulted profile/contract data
     const managementTitles = [
       "HR",
       "Branch Manager",
@@ -144,7 +188,6 @@ export default function StaffStatusReport() {
       return "Kitchen Staff";
     }
 
-    // 3. Keyword/text matching fallback for dynamic titles
     const titleLower = title.toLowerCase();
     if (
       titleLower.includes("manager") ||
@@ -193,15 +236,10 @@ export default function StaffStatusReport() {
     });
     return [...new Set(list)].filter(Boolean);
   }, [locations, candidateStaff]);
-  const scheduled = candidateStaff.filter((p) => profileBranch(p) && profileShifts(p).length > 0);
-  
+
   const departmentStaff = useMemo(() => {
     return candidateStaff.filter((p) => getStaffDepartment(p) === activeTab);
   }, [candidateStaff, getStaffDepartment, activeTab]);
-
-  const departmentScheduled = useMemo(() => {
-    return scheduled.filter((p) => departmentStaff.some((ds) => ds.employeeId === p.employeeId));
-  }, [scheduled, departmentStaff]);
 
   const kitchenStaffCount = useMemo(() => {
     return candidateStaff.filter((p) => getStaffDepartment(p) === "Kitchen Staff").length;
@@ -217,54 +255,137 @@ export default function StaffStatusReport() {
     return ["Morning", "Evening"];
   }, []);
 
-  const assigned = useCallback((branch, shift, position) => candidateStaff.filter((p) => personHasShift(p, branch, shift) && p.jobTitle === position), [candidateStaff]);
+  // Assigned employees for a specific cell on the selected day
+  const assigned = useCallback((branch, shift, position) => {
+    // 1. Check roster entries for this specific day first
+    const rKey = rosterCellKey({
+      month: selectedMonth,
+      branch,
+      department: activeTab,
+      position,
+      shift,
+      date: selectedDay,
+    });
+    const rosterEntries = getCellEntries(roster, rKey);
+    const rosterWorkingIds = rosterEntries.filter(e => e.status === "Working").map(e => e.employeeId);
+
+    if (rosterWorkingIds.length > 0) {
+      return candidateStaff.filter(p => rosterWorkingIds.includes(p.employeeId));
+    }
+
+    // 2. Default to standing shift assignments for the position and branch
+    return candidateStaff.filter((p) => personHasShift(p, branch, shift) && p.jobTitle === position);
+  }, [candidateStaff, roster, selectedMonth, selectedDay, activeTab]);
+
   const required = useCallback((branch, shift, position) => Math.max(0, Number(config.requirements?.[cellKey(branch, shift, position)]) || 0), [config.requirements]);
   const visibleRows = () => shownShifts;
 
+  // Department scheduled on the selected day
+  const departmentScheduledIds = useMemo(() => {
+    const scheduledIds = new Set();
+    branches.forEach((b) => {
+      shownShifts.forEach((s) => {
+        positions.forEach((pos) => {
+          assigned(b, s, pos).forEach(p => scheduledIds.add(p.employeeId));
+        });
+      });
+    });
+    return scheduledIds;
+  }, [branches, shownShifts, positions, assigned]);
+
   const totals = useMemo(() => {
-    let need = 0, have = 0, morningNeed = 0, morningHave = 0, eveningNeed = 0, eveningHave = 0;
-    const weakBranches = new Set();
+    let need = 0, have = 0;
     branches.forEach((branch) => shownShifts.forEach((shift) => positions.forEach((position) => {
-      const r = required(branch, shift, position), a = assigned(branch, shift, position).length;
-      need += r; have += a;
-      if (shift === "Morning") { morningNeed += r; morningHave += a; } 
-      else if (shift === "Evening") { eveningNeed += r; eveningHave += a; }
-      if (a < r) weakBranches.add(branch);
+      const r = required(branch, shift, position);
+      const a = assigned(branch, shift, position).length;
+      need += r;
+      have += a;
     })));
-    return { open: Math.max(0, need - have), weak: weakBranches.size, morning: pct(morningHave, morningNeed), evening: pct(eveningHave, eveningNeed), overall: pct(have, need) };
+    return {
+      open: Math.max(0, need - have),
+    };
   }, [branches, shownShifts, positions, required, assigned]);
 
   const saveConfig = (next) => { setConfig(next); localStorage.setItem(REPORT_KEY, JSON.stringify(next)); };
   const updateNeed = (branch, shift, position, value) => saveConfig({ ...config, requirements: { ...config.requirements, [cellKey(branch, shift, position)]: value } });
-  const updateNote = (branch, shift, value) => saveConfig({ ...config, notes: { ...config.notes, [noteKey(branch, shift)]: value } });
+  const updateNote = (branch, shift, value) => saveConfig({ ...config, notes: { ...config.notes, [noteKey(branch, shift, selectedDay)]: value } });
   const openAssign = (branch = shownBranches[0] || branches[0] || "", shift = shownShifts[0] || "Morning", position = shownPositions[0] || positions[0] || "") => { setDialog({ mode: "assign", branch, shift, position }); setDialogSearch(""); };
   const openRemove = (branch = "", shift = "", position = "") => { setDialog({ mode: "remove", branch, shift, position }); setDialogSearch(""); };
-  
+
   const assignPerson = (person) => {
+    // Save to daily roster schedule for selectedDay
+    const rKey = rosterCellKey({
+      month: selectedMonth,
+      branch: dialog.branch,
+      department: activeTab,
+      position: dialog.position,
+      shift: dialog.shift,
+      date: selectedDay,
+    });
+    const currentRosterEntries = getCellEntries(roster, rKey);
+    if (!currentRosterEntries.some(e => e.employeeId === person.employeeId)) {
+      const newEntry = buildRosterEntry({
+        employee: person,
+        date: selectedDay,
+        branch: dialog.branch,
+        department: activeTab,
+        position: dialog.position,
+        shift: dialog.shift,
+        status: "Working",
+      });
+      const updatedRoster = {
+        ...roster,
+        [rKey]: [...currentRosterEntries, newEntry],
+      };
+      saveRosterData(updatedRoster);
+      setRoster(updatedRoster);
+    }
+
+    // Also sync standing shift assignment
     const currentAssignments = profileShiftAssignments(person).map(a => `${a.shift}@${a.branch}`);
     const newAssignment = `${dialog.shift}@${dialog.branch}`;
-    if (currentAssignments.includes(newAssignment)) {
-      setDialog(null);
-      return;
+    if (!currentAssignments.includes(newAssignment)) {
+      const nextAssignments = [...currentAssignments, newAssignment].join("; ");
+      saveStaffProfile({
+        ...person,
+        assignedShift: nextAssignments,
+        statusReportBranch: dialog.branch,
+        workLocation: dialog.branch,
+        workLocation1: dialog.branch,
+        contractStatus: person.contractStatus || "Signed",
+        employmentStatus: "Active",
+      });
+      setProfiles(getStaffProfiles());
     }
-    const nextAssignments = [...currentAssignments, newAssignment].join("; ");
-    saveStaffProfile({
-      ...person,
-      assignedShift: nextAssignments,
-      statusReportBranch: dialog.branch,
-      workLocation: dialog.branch,
-      workLocation1: dialog.branch,
-      contractStatus: person.contractStatus || "Signed",
-      employmentStatus: "Active",
-    });
-    setProfiles(getStaffProfiles());
+
     setDialog(null);
   };
-  
-  const removePerson = (person, targetShift, targetBranch) => {
-    const currentAssignments = profileShiftAssignments(person).map(a => `${a.shift}@${a.branch}`);
+
+  const removePerson = (person, targetShift, targetBranch, targetPosition) => {
     const shiftToRemove = targetShift || dialog?.shift;
     const branchToRemove = targetBranch || dialog?.branch;
+    const posToRemove = targetPosition || dialog?.position || person.jobTitle;
+
+    // Remove from roster for selectedDay
+    const rKey = rosterCellKey({
+      month: selectedMonth,
+      branch: branchToRemove,
+      department: activeTab,
+      position: posToRemove,
+      shift: shiftToRemove,
+      date: selectedDay,
+    });
+    const currentRosterEntries = getCellEntries(roster, rKey);
+    const updatedEntries = currentRosterEntries.filter(e => e.employeeId !== person.employeeId);
+    const updatedRoster = {
+      ...roster,
+      [rKey]: updatedEntries,
+    };
+    saveRosterData(updatedRoster);
+    setRoster(updatedRoster);
+
+    // Also update standing assignments
+    const currentAssignments = profileShiftAssignments(person).map(a => `${a.shift}@${a.branch}`);
     const assignmentToRemove = `${shiftToRemove}@${branchToRemove}`;
     const nextAssignments = currentAssignments
       .filter((a) => a !== assignmentToRemove && a !== shiftToRemove && a !== `${shiftToRemove}@${branchToRemove}`)
@@ -275,94 +396,225 @@ export default function StaffStatusReport() {
     });
     setProfiles(getStaffProfiles());
   };
+
   const updateSelected = (person) => { updateStaffProfile(person.employeeId, person); setSelectedProfile(person); };
 
   const dialogPeople = candidateStaff.filter((person) => {
     if (dialog?.mode === "assign") {
       if (person.jobTitle !== dialog.position) return false;
-      if (personHasShift(person, null, dialog.shift)) return false;
+      const alreadyAssigned = assigned(dialog.branch, dialog.shift, dialog.position).some(p => p.employeeId === person.employeeId);
+      if (alreadyAssigned) return false;
     }
     if (dialog?.mode === "remove") {
-      if (!profileShifts(person).length) return false;
-      if (dialog.branch && !personHasBranch(person, dialog.branch)) return false;
-      if (dialog.shift && !personHasShift(person, dialog.branch, dialog.shift)) return false;
       if (dialog.position && person.jobTitle !== dialog.position) return false;
     }
     const q = dialogSearch.trim().toLowerCase();
     return !q || `${person.fullName} ${person.employeeId} ${person.phoneNumber}`.toLowerCase().includes(q);
   });
 
+  // Only 3 clean KPI cards: Total Employees, Scheduled Today, Open Positions
   const cards = useMemo(() => {
-    const list = [
+    return [
       ["Total Employees", departmentStaff.length, Users, "violet"],
-      ["Scheduled Today", new Set(departmentScheduled.map((p) => p.employeeId)).size, UserCheck, "blue"],
+      ["Scheduled Today", departmentScheduledIds.size, UserCheck, "blue"],
       ["Open Positions", totals.open, BriefcaseBusiness, "rose"],
-      ["Understaffed Branches", totals.weak, AlertTriangle, "amber"],
-      ["Morning Coverage", `${totals.morning}%`, SunMedium, "sky"],
-      ["Evening Coverage", `${totals.evening}%`, Sunset, "indigo"],
-      ["Overall Staffing", `${totals.overall}%`, LayoutGrid, "emerald"],
     ];
-    return list;
-  }, [departmentStaff.length, departmentScheduled, totals]);
+  }, [departmentStaff.length, departmentScheduledIds.size, totals.open]);
 
-  return <div className="mx-auto max-w-full px-4 pb-4">
-    <header className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 bg-gradient-to-r from-slate-950 via-slate-900 to-violet-950 px-4 py-3 text-white lg:flex-row lg:items-center lg:justify-between">
-        <div><h1 className="text-xl font-black">Staff Status Report</h1></div>
-        <div className="flex flex-wrap gap-2 no-print"><Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save" : "Edit Required"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} /><Action icon={Plus} label="Assign" primary={!editNeeds} onClick={() => openAssign()} /><Action icon={MinusCircle} label="Remove" onClick={() => openRemove()} /><Action icon={Download} label="PDF" onClick={() => exportToPDF("staff-status-report-print", "Staff_Status_Report.pdf")} /><Action icon={Printer} label="Print" onClick={() => printDocument("staff-status-report-print")} /></div>
-      </div>
-    </header>
+  const [yearStr, monthNumStr] = selectedMonth.split("-");
+  const monthName = new Date(Number(yearStr), Number(monthNumStr) - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const selectedDayFormatted = new Date(selectedDay).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 
-    {/* Tab Switcher */}
-    <div className="mt-3 border-b border-slate-200 no-print">
-      <div className="flex gap-4">
-        <button 
-          onClick={() => setActiveTab("Kitchen Staff")}
-          className={`pb-2 font-bold text-xs border-b-2 transition-all cursor-pointer ${activeTab === "Kitchen Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-        >
-          Kitchen Staff ({kitchenStaffCount})
-        </button>
-        <button 
-          onClick={() => setActiveTab("Management Staff")}
-          className={`pb-2 font-bold text-xs border-b-2 transition-all cursor-pointer ${activeTab === "Management Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-        >
-          Management Staff ({managementStaffCount})
-        </button>
-      </div>
-    </div>
+  return (
+    <div className="mx-auto max-w-full px-4 pb-8">
+      {/* Top Header */}
+      <header className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 bg-gradient-to-r from-slate-950 via-slate-900 to-violet-950 px-4 py-3 text-white lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-xl font-black">Staff Status Report</h1>
+            <p className="text-xs text-slate-300 font-medium mt-0.5">Real-time daily staffing overview, position requirements, and assignment tracking.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 no-print">
+            <Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save" : "Edit Required"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} />
+            <Action icon={Plus} label="Assign" primary={!editNeeds} onClick={() => openAssign()} />
+            <Action icon={MinusCircle} label="Remove" onClick={() => openRemove()} />
+            <Action icon={Download} label="PDF" onClick={() => exportToPDF("staff-status-report-print", `Staff_Status_Report_${selectedDay}.pdf`)} />
+            <Action icon={Printer} label="Print" onClick={() => printDocument("staff-status-report-print")} />
+          </div>
+        </div>
+      </header>
 
-    <div id="staff-status-report-print">
-      {/* Printable Header */}
-      <div className="hidden print-only mb-3">
-        <h1 className="text-lg font-black text-slate-900">Staff Status Report - {activeTab}</h1>
-      </div>
-
-      <section className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
-        {cards.map(([label, value, Icon, color]) => (
-          <article key={label} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-            <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${cardTones[color]}`}><Icon size={15} /></span>
-            <div>
-              <p className="text-sm font-black leading-none text-slate-900">{value}</p>
-              <p className="mt-0.5 text-[10px] font-bold text-slate-500 leading-none">{label}</p>
+      {/* Date Navigation Bar (Month, Week, Day controls) */}
+      <section className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm no-print">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* Month & Week Selectors */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(addMonths(selectedMonth, -1))}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-white hover:shadow-sm transition"
+                title="Previous month"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMonth(monthKey());
+                  setSelectedDay(todayStr);
+                  setSelectedWeek("all");
+                }}
+                className="px-3 py-1.5 text-xs font-bold text-slate-700 hover:text-violet-700 transition"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedMonth(addMonths(selectedMonth, 1))}
+                className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-white hover:shadow-sm transition"
+                title="Next month"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
-          </article>
-        ))}
+
+            <div className="relative">
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => e.target.value && setSelectedMonth(e.target.value)}
+                className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none focus:border-violet-300 focus:bg-white"
+              />
+            </div>
+
+            <div className="relative">
+              <select
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 outline-none focus:border-violet-300 focus:bg-white cursor-pointer"
+              >
+                <option value="all">All Weeks</option>
+                <option value="1">Week 1 (Days 1 - 7)</option>
+                <option value="2">Week 2 (Days 8 - 14)</option>
+                <option value="3">Week 3 (Days 15 - 21)</option>
+                <option value="4">Week 4 (Days 22 - 28)</option>
+                <option value="5">Week 5 (Days 29+)</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5 pl-2 text-xs font-black text-violet-700">
+              <Calendar size={14} />
+              <span>{monthName}</span>
+            </div>
+          </div>
+
+          {/* Active Viewing Day Badge */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500">Viewing Date:</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-black text-violet-800">
+              <CalendarDays size={13} />
+              {selectedDayFormatted}
+            </span>
+          </div>
+        </div>
+
+        {/* Days Pill Strip */}
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1 border-t border-slate-100 pt-3">
+          {filteredDays.map((d) => {
+            const isSelected = d.date === selectedDay;
+            const isToday = d.date === todayStr;
+            return (
+              <button
+                key={d.date}
+                type="button"
+                onClick={() => setSelectedDay(d.date)}
+                className={`flex shrink-0 flex-col items-center justify-center rounded-lg border px-3 py-1.5 text-xs transition cursor-pointer ${
+                  isSelected
+                    ? "border-violet-600 bg-violet-600 text-white shadow-sm"
+                    : isToday
+                    ? "border-violet-300 bg-violet-50/70 text-violet-900 hover:bg-violet-100"
+                    : "border-slate-200 bg-slate-50/80 text-slate-700 hover:border-slate-300 hover:bg-white"
+                }`}
+              >
+                <span className={`text-[10px] font-bold uppercase ${isSelected ? "text-violet-200" : "text-slate-400"}`}>
+                  {d.day}
+                </span>
+                <span className="text-sm font-black leading-tight">
+                  {d.label}
+                </span>
+                {isToday && (
+                  <span className={`mt-0.5 h-1 w-1 rounded-full ${isSelected ? "bg-white" : "bg-violet-600"}`} />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </section>
 
-      <div className="mt-2.5 flex flex-wrap gap-2 text-[10px] font-bold">
-        <Legend color="bg-rose-400" text="Staff required" />
-        <Legend color="bg-slate-300" text="No requirement" />
-        <span className="ml-auto text-slate-400">Updated {new Date().toLocaleString()}</span>
+      {/* Tab Switcher */}
+      <div className="mt-3 border-b border-slate-200 no-print">
+        <div className="flex gap-4">
+          <button 
+            onClick={() => setActiveTab("Kitchen Staff")}
+            className={`pb-2 font-bold text-xs border-b-2 transition-all cursor-pointer ${activeTab === "Kitchen Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            Kitchen Staff ({kitchenStaffCount})
+          </button>
+          <button 
+            onClick={() => setActiveTab("Management Staff")}
+            className={`pb-2 font-bold text-xs border-b-2 transition-all cursor-pointer ${activeTab === "Management Staff" ? "border-violet-600 text-violet-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+          >
+            Management Staff ({managementStaffCount})
+          </button>
+        </div>
       </div>
 
-      <section className="mt-3 hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
-        <div className="overflow-auto max-h-[72vh]">
-          <table
-            className="min-w-max table-fixed border-separate border-spacing-0 text-left text-xs"
-            style={{
-              width: TABLE_COLUMN_WIDTHS.branch + TABLE_COLUMN_WIDTHS.shift + TABLE_COLUMN_WIDTHS.notes + (shownPositions.length * TABLE_COLUMN_WIDTHS.position),
-            }}
-          >
+      <div id="staff-status-report-print">
+        {/* Printable Header */}
+        <div className="hidden print-only mb-4 border-b border-slate-300 pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-black text-slate-900">Staff Status Report - {activeTab}</h1>
+              <p className="text-xs text-slate-600 mt-0.5">Date: {selectedDayFormatted} ({selectedMonth})</p>
+            </div>
+            <div className="text-right text-xs text-slate-500">
+              <p className="font-bold text-slate-800">Greek Souvlaki HR</p>
+              <p>Generated: {new Date().toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Clean 3 KPI Cards */}
+        <section className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {cards.map(([label, value, Icon, color]) => (
+            <article key={label} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${cardTones[color]}`}>
+                <Icon size={20} />
+              </span>
+              <div>
+                <p className="text-xl font-black leading-tight text-slate-900">{value}</p>
+                <p className="text-xs font-bold text-slate-500">{label}</p>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold no-print">
+          <Legend color="bg-rose-400" text="Staff required" />
+          <Legend color="bg-slate-300" text="No requirement" />
+          <span className="ml-auto text-slate-400 text-[11px]">Selected: {selectedDayFormatted}</span>
+        </div>
+
+        {/* Status Report Table with Full Scroll and Sticky Headers */}
+        <section className="mt-3 hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
+          <div className="overflow-auto max-h-[72vh]">
+            <table
+              className="min-w-max table-fixed border-separate border-spacing-0 text-left text-xs"
+              style={{
+                width: TABLE_COLUMN_WIDTHS.branch + TABLE_COLUMN_WIDTHS.shift + TABLE_COLUMN_WIDTHS.notes + (shownPositions.length * TABLE_COLUMN_WIDTHS.position),
+              }}
+            >
             <colgroup>
               <col style={{ width: TABLE_COLUMN_WIDTHS.branch }} />
               <col style={{ width: TABLE_COLUMN_WIDTHS.shift }} />
@@ -405,7 +657,7 @@ export default function StaffStatusReport() {
                     <td className="border-b border-slate-200 bg-white p-1.5 align-middle">
                       <input 
                         className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs outline-none focus:border-violet-300 focus:bg-white" 
-                        value={config.notes?.[noteKey(branch, shift)] || ""} 
+                        value={config.notes?.[noteKey(branch, shift, selectedDay)] || config.notes?.[noteKey(branch, shift)] || ""} 
                         onChange={(e) => updateNote(branch, shift, e.target.value)} 
                         placeholder="Notes..." 
                       />
@@ -451,7 +703,7 @@ export default function StaffStatusReport() {
                 </div>
                 <input 
                   className="mt-2 w-full rounded border border-slate-200 bg-slate-50 p-2 text-xs" 
-                  value={config.notes?.[noteKey(branch, shift)] || ""} 
+                  value={config.notes?.[noteKey(branch, shift, selectedDay)] || config.notes?.[noteKey(branch, shift)] || ""} 
                   onChange={(e) => updateNote(branch, shift, e.target.value)} 
                   placeholder="Shift notes..." 
                 />
@@ -466,7 +718,8 @@ export default function StaffStatusReport() {
       {dialog && <AssignDialog dialog={dialog} setDialog={setDialog} branches={branches} positions={positions} people={dialogPeople} search={dialogSearch} setSearch={setDialogSearch} assign={assignPerson} remove={removePerson} profileShifts={profileShifts} profileBranch={profileBranch} shifts={shownShifts} />}
     </AnimatePresence>
     {selectedProfile && <StaffProfileModal profile={selectedProfile} profiles={profiles} onProfileUpdate={updateSelected} onClose={() => setSelectedProfile(null)} />}
-  </div>;
+  </div>
+  );
 }
 
 function Action({ icon: Icon, label, onClick, primary }) {
