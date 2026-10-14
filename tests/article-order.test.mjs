@@ -32,9 +32,11 @@ test("inserts a custom article and renumbers later PDF sections", async () => {
   });
 
   const customPosition = result.indexOf("4. Custom placement");
-  const originalFourthPosition = result.indexOf("5. Built-in article 4");
+  const originalFourthPosition = result.indexOf("Built-in article 4");
   assert.ok(customPosition > -1, "custom article heading should be present");
   assert.ok(result.includes("Custom PDF content"), "custom article content should be present");
   assert.ok(originalFourthPosition > customPosition, "the original fourth article should follow the inserted article");
-  assert.ok(result.includes("19. Built-in article 18"), "the final article should be renumbered");
+  assert.ok(result.includes("Built-in article 18"), "the final article should be included");
+  assert.ok(result.includes("Built-in article 1"), "built-in heading text without duplicate number should be present");
+  assert.ok(!result.includes("1. Built-in article 1"), "built-in heading should not duplicate manual prefix number");
 });

@@ -473,7 +473,11 @@ export const reorderAndNumberContractArticles = (xml, formData) => {
     return originalBlock.replace(paragraphPattern, (paragraphXml) => {
       if (isFirstParagraph) {
         isFirstParagraph = false;
-        return replaceParagraphVisibleText(paragraphXml, article.title);
+        const hasAutoNumbering = paragraphXml.includes("<w:numPr");
+        const titleText = hasAutoNumbering
+          ? article.title.replace(/^\s*\d+\s*[.)-]?\s*/, "")
+          : article.title;
+        return replaceParagraphVisibleText(paragraphXml, titleText);
       }
 
       const text = getParagraphText(paragraphXml);
