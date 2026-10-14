@@ -410,15 +410,19 @@ export default function StaffStatusReport() {
 
   const dialogPeople = candidateStaff.filter((person) => {
     if (dialog?.mode === "assign") {
-      if (person.jobTitle !== dialog.position) return false;
-      const alreadyAssigned = assigned(dialog.branch, dialog.shift, dialog.position).some(p => p.employeeId === person.employeeId);
+      // If position is chosen, match by jobTitle (or allow transfer/flexible if none specified)
+      if (dialog.position && person.jobTitle && person.jobTitle !== dialog.position) return false;
+      const alreadyAssigned = assigned(dialog.branch, dialog.shift, dialog.position || person.jobTitle).some(p => p.employeeId === person.employeeId);
       if (alreadyAssigned) return false;
     }
     if (dialog?.mode === "remove") {
-      if (dialog.position && person.jobTitle !== dialog.position) return false;
+      if (dialog.position && person.jobTitle && person.jobTitle !== dialog.position) return false;
+      // Only show people actually assigned to this branch and shift
+      const isAssigned = assigned(dialog.branch, dialog.shift, dialog.position || person.jobTitle).some(p => p.employeeId === person.employeeId);
+      if (!isAssigned) return false;
     }
     const q = dialogSearch.trim().toLowerCase();
-    return !q || `${person.fullName} ${person.employeeId} ${person.phoneNumber}`.toLowerCase().includes(q);
+    return !q || `${person.fullName} ${person.employeeId} ${person.phoneNumber} ${person.jobTitle}`.toLowerCase().includes(q);
   });
 
   // Only 3 clean KPI cards: Total Employees, Scheduled Today, Open Positions
@@ -853,7 +857,23 @@ function Legend({ color, text }) {
   return <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1 text-slate-600"><span className={`h-2 w-2 rounded-full ${color}`} />{text}</span>;
 }
 function Select({ label, value, options, all, change, disabled }) {
-  return <label><span className="mb-1 block text-[10px] font-bold text-slate-500">{label}</span><select className="input-field h-8 py-0.5 text-xs disabled:bg-slate-100" value={value} onChange={(e) => change(e.target.value)} disabled={disabled}><option value="">{all}</option>{options.map((option) => { const item = typeof option === "string" ? { value: option, label: option } : option; return <option key={item.value} value={item.value}>{item.label}</option>; })}</select></label>;
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-bold text-slate-600">{label}</span>
+      <select 
+        className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 shadow-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:bg-slate-100 cursor-pointer" 
+        value={value} 
+        onChange={(e) => change(e.target.value)} 
+        disabled={disabled}
+      >
+        <option value="">{all}</option>
+        {options.map((option) => { 
+          const item = typeof option === "string" ? { value: option, label: option } : option; 
+          return <option key={item.value} value={item.value}>{item.label}</option>; 
+        })}
+      </select>
+    </label>
+  );
 }
 
 function PositionHead({ position, required, assigned }) {
@@ -930,6 +950,90 @@ function StaffCell({ branch, shift, position, people, required, tone, editNeeds,
 
 function AssignDialog({ dialog, setDialog, branches, positions, people, search, setSearch, assign, remove, profileShifts, profileBranch, shifts }) {
   const assigning = dialog.mode === "assign";
-  return <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDialog(null)} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><motion.section initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12 }} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"><header className="flex justify-between border-b p-5"><div><p className="text-xs font-black uppercase tracking-wider text-violet-600">Quick Action</p><h2 className="mt-1 text-xl font-black">{assigning ? "Assign Employee" : "Remove Assignment"}</h2><p className="mt-1 text-sm text-slate-500">{assigning ? "Active employees in this position eligible for shift assignment." : "Choose a scheduled employee to remove."}</p></div><button onClick={() => setDialog(null)} className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100"><X size={17} /></button></header><div className="grid gap-3 border-b bg-slate-50 p-5 sm:grid-cols-3"><Select label="Branch" value={dialog.branch} options={branches} all="All branches" change={(v) => setDialog({ ...dialog, branch: v })} /><Select label="Shift" value={dialog.shift} options={shifts} all="All shifts" change={(v) => setDialog({ ...dialog, shift: v })} /><Select label="Position" value={dialog.position} options={positions} all="All positions" change={(v) => setDialog({ ...dialog, position: v })} /></div><div className="p-5"><label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} /><input autoFocus className="input-field pl-10" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, ID, or phone" /></label></div><div className="flex-1 space-y-2 overflow-y-auto px-5 pb-5">{people.map((person) => { const s = profileShifts(person); return <button key={person.employeeId} onClick={() => assigning ? assign(person) : remove(person, dialog.shift, dialog.branch, dialog.position)} className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-3 text-left hover:border-violet-300 hover:bg-violet-50"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-violet-100 text-sm font-black text-violet-700">{String(person.fullName || "E").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm">{person.fullName}</strong><small className="text-slate-500">{person.employeeId} · {person.jobTitle}{s.length ? ` · ${profileBranch(person)} (${s.join(", ")})` : ""}</small></span><span className={`rounded-lg px-3 py-1.5 text-xs font-bold ${assigning ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>{assigning ? "Assign" : "Remove"}</span></button>; })}{!people.length && <div className="rounded-2xl border border-dashed bg-slate-50 py-12 text-center"><UserRoundSearch className="mx-auto text-slate-300" size={32} /><p className="mt-3 font-bold text-slate-700">No available employees found</p><p className="mt-1 text-sm text-slate-500">Check the position, status, or current assignment.</p></div>}</div></motion.section></motion.div>;
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setDialog(null)} className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+      <motion.section initial={{ opacity: 0, y: 16, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12 }} onMouseDown={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+        <header className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`inline-block h-2 w-2 rounded-full ${assigning ? "bg-violet-600" : "bg-rose-600"}`} />
+              <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">{assigning ? "Staff Assignment" : "Shift Removal"}</p>
+            </div>
+            <h2 className="mt-0.5 text-lg font-black text-slate-900">{assigning ? "Assign Staff to Shift" : "Remove Staff from Shift"}</h2>
+          </div>
+          <button type="button" onClick={() => setDialog(null)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition">
+            <X size={16} />
+          </button>
+        </header>
+
+        {/* Dropdowns */}
+        <div className="grid gap-3 border-b border-slate-100 bg-slate-50/70 p-4 sm:grid-cols-3">
+          <Select label="Branch" value={dialog.branch} options={branches} all="All branches" change={(v) => setDialog({ ...dialog, branch: v })} />
+          <Select label="Shift" value={dialog.shift} options={shifts} all="All shifts" change={(v) => setDialog({ ...dialog, shift: v })} />
+          <Select label="Position" value={dialog.position} options={positions} all="All positions" change={(v) => setDialog({ ...dialog, position: v })} />
+        </div>
+
+        {/* Search */}
+        <div className="p-4 border-b border-slate-100">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input 
+              autoFocus 
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-9 pr-4 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none transition focus:border-violet-500 focus:bg-white focus:ring-2 focus:ring-violet-500/20" 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              placeholder="Search by employee name, ID, position, or phone..." 
+            />
+          </div>
+        </div>
+
+        {/* Staff List */}
+        <div className="flex-1 space-y-2 overflow-y-auto p-4 min-h-[220px]">
+          {people.map((person) => { 
+            const s = profileShifts(person); 
+            return (
+              <div 
+                key={person.employeeId} 
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 hover:border-violet-300 hover:bg-violet-50/40 transition shadow-xs"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-xs font-black text-violet-700">
+                    {String(person.fullName || "E").split(/\s+/).map((p) => p[0]).slice(0, 2).join("")}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-black text-slate-900">{person.fullName}</p>
+                    <p className="truncate text-[11px] font-semibold text-slate-500 mt-0.5">
+                      <span className="text-violet-700 font-bold">{person.jobTitle || "No role"}</span> · {person.employeeId} · {person.workLocation || profileBranch(person)}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => assigning ? assign(person) : remove(person, dialog.shift, dialog.branch, dialog.position)} 
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                    assigning 
+                      ? "bg-violet-600 text-white shadow-xs hover:bg-violet-700" 
+                      : "bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100"
+                  }`}
+                >
+                  {assigning ? "Assign" : "Remove"}
+                </button>
+              </div>
+            ); 
+          })}
+
+          {!people.length && (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-10 text-center">
+              <UserRoundSearch className="mx-auto text-slate-300" size={32} />
+              <p className="mt-2.5 text-xs font-bold text-slate-700">No matching employees found</p>
+              <p className="mt-1 text-[11px] text-slate-400">
+                {assigning ? "Try changing or clearing the position/branch filter above." : "No employees currently scheduled for this shift/cell."}
+              </p>
+            </div>
+          )}
+        </div>
+      </motion.section>
+    </motion.div>
+  );
 }
 function Empty({ text }) { return <div className="p-12 text-center text-sm font-semibold text-slate-500">{text}</div>; }
