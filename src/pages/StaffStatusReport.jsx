@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BriefcaseBusiness, Building2, Calendar, CalendarDays, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, RotateCcw, Save, Search, Sparkles, SunMedium, Sunset, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Building2, Calendar, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, RotateCcw, Save, Search, Sparkles, SunMedium, Sunset, Trash2, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
 import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
-import { getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, saveWorkLocation, updateStaffProfile } from "../utils/storage";
+import { deleteWorkLocation, getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, saveWorkLocation, updateStaffProfile } from "../utils/storage";
 import { daysInMonth, getCellEntries, loadRosterData, monthKey, rosterCellKey, saveRosterData, buildRosterEntry } from "../utils/roster";
 
 const REPORT_KEY = "staffStatusReportConfigV2";
@@ -99,6 +99,39 @@ export default function StaffStatusReport() {
   const [selectedMonth, setSelectedMonth] = useState(() => monthKey());
   const [selectedWeek, setSelectedWeek] = useState("all");
   const [selectedDay, setSelectedDay] = useState(todayStr);
+
+  // Add Row / Branch controls
+  const [isAddingBranch, setIsAddingBranch] = useState(false);
+  const [newBranchName, setNewBranchName] = useState("");
+
+  const handleAddBranch = (e) => {
+    if (e) e.preventDefault();
+    const trimmed = newBranchName.trim();
+    if (!trimmed) return;
+    
+    // Check if branch already exists
+    if (branches.some(b => b.toLowerCase() === trimmed.toLowerCase())) {
+      window.alert(`Branch "${trimmed}" already exists.`);
+      return;
+    }
+
+    saveWorkLocation(trimmed);
+    setNewBranchName("");
+    setIsAddingBranch(false);
+  };
+
+  const handleRemoveBranch = (branchName) => {
+    if (!window.confirm(`Are you sure you want to remove row/branch "${branchName}"?`)) return;
+    const loc = locations.find(l => l.name === branchName);
+    if (loc && loc.id) {
+      deleteWorkLocation(loc.id);
+    } else {
+      // If it's a default or assigned branch, save an empty workLocation list without it or remove staff associations
+      const updatedLocs = locations.filter(l => l.name !== branchName);
+      localStorage.setItem('workLocations', JSON.stringify(updatedLocs));
+      window.dispatchEvent(new Event("workLocationsChanged"));
+    }
+  };
 
   useEffect(() => {
     const staff = () => setProfiles(getStaffProfiles());
@@ -563,6 +596,7 @@ export default function StaffStatusReport() {
           </div>
           <div className="flex flex-wrap gap-2 no-print">
             <Action icon={Sparkles} label="Load Test Data" onClick={populateTestData} />
+            <Action icon={Plus} label="Add Row" onClick={() => setIsAddingBranch(true)} />
             <Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save" : "Edit Required"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} />
             <Action icon={Plus} label="Assign" primary={!editNeeds} onClick={() => openAssign()} />
             <Action icon={MinusCircle} label="Remove" onClick={() => openRemove()} />
@@ -768,7 +802,17 @@ export default function StaffStatusReport() {
                   <tr key={`${branch}-${shift}`} className="hover:bg-slate-50/30">
                     {index === 0 && (
                       <th rowSpan={rows.length} className="sticky left-0 z-20 border-b border-r border-slate-200 bg-white px-2 py-2 text-left font-black text-slate-900 align-middle">
-                        {branch}
+                        <div className="flex items-center justify-between gap-1 group">
+                          <span className="truncate">{branch}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBranch(branch)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-rose-600 p-0.5 rounded no-print"
+                            title={`Remove branch ${branch}`}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </th>
                     )}
                     <th className="sticky z-20 border-b border-r border-slate-200 bg-white px-2 py-2 align-middle" style={{ left: TABLE_COLUMN_WIDTHS.branch }}>
@@ -793,6 +837,54 @@ export default function StaffStatusReport() {
                   </tr>
                 ));
               })}
+
+              {/* Bottom Add Row / Branch Interactive Row */}
+              <tr className="no-print bg-slate-50/60 hover:bg-slate-50 transition">
+                <td colSpan={shownPositions.length + 3} className="border-t border-slate-200 p-2">
+                  {isAddingBranch ? (
+                    <form onSubmit={handleAddBranch} className="flex items-center gap-2 max-w-md">
+                      <div className="relative flex-1">
+                        <Building2 size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
+                        <input
+                          autoFocus
+                          type="text"
+                          value={newBranchName}
+                          onChange={(e) => setNewBranchName(e.target.value)}
+                          placeholder="Enter new branch or row name (e.g. Sharjah, Marina, Branch 3)..."
+                          className="w-full rounded-lg border border-violet-400 bg-white py-1.5 pl-8 pr-3 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-violet-500/20"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-black text-white hover:bg-violet-700 transition cursor-pointer shadow-xs"
+                      >
+                        <Check size={14} />
+                        Add Row
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingBranch(false);
+                          setNewBranchName("");
+                        }}
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-500 hover:bg-slate-100 transition cursor-pointer"
+                        title="Cancel"
+                      >
+                        <X size={14} />
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingBranch(true)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-violet-400 hover:bg-violet-50/50 hover:text-violet-700 transition cursor-pointer"
+                    >
+                      <Plus size={14} className="text-violet-600" />
+                      <span>Add Row / Branch</span>
+                    </button>
+                  )}
+                </td>
+              </tr>
             </tbody>
           </table>
           {!shownPositions.length && <Empty text="No positions configured." />}
@@ -803,9 +895,19 @@ export default function StaffStatusReport() {
       <section className="mt-3 space-y-3 lg:hidden">
         {shownBranches.map((branch) => (
           <article key={branch} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b bg-slate-50 p-3">
-              <Building2 size={16} className="text-violet-600" />
-              <h3 className="font-black text-xs">{branch}</h3>
+            <div className="flex items-center justify-between border-b bg-slate-50 p-3">
+              <div className="flex items-center gap-2">
+                <Building2 size={16} className="text-violet-600" />
+                <h3 className="font-black text-xs">{branch}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRemoveBranch(branch)}
+                className="text-slate-400 hover:text-rose-600 p-1 rounded"
+                title={`Remove ${branch}`}
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
             {visibleRows(branch).map((shift) => (
               <div key={shift} className="border-b p-3 last:border-0">
@@ -839,6 +941,50 @@ export default function StaffStatusReport() {
             ))}
           </article>
         ))}
+
+        {/* Mobile Add Row / Branch button */}
+        <div className="pt-2 no-print">
+          {isAddingBranch ? (
+            <form onSubmit={handleAddBranch} className="rounded-xl border border-violet-200 bg-white p-3 shadow-xs space-y-2">
+              <label className="block text-xs font-bold text-slate-700">Add New Row / Branch</label>
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  type="text"
+                  value={newBranchName}
+                  onChange={(e) => setNewBranchName(e.target.value)}
+                  placeholder="Branch or location name..."
+                  className="flex-1 rounded-lg border border-slate-300 p-2 text-xs font-semibold outline-none focus:border-violet-500"
+                />
+                <button
+                  type="submit"
+                  className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-black text-white hover:bg-violet-700 cursor-pointer"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingBranch(false);
+                    setNewBranchName("");
+                  }}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsAddingBranch(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white p-3 text-xs font-bold text-slate-700 hover:border-violet-400 hover:bg-violet-50/50 hover:text-violet-700 transition"
+            >
+              <Plus size={16} className="text-violet-600" />
+              <span>Add Row / Branch</span>
+            </button>
+          )}
+        </div>
       </section>
     </div>
 

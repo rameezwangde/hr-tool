@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { CalendarRange, Copy, Download, FileSpreadsheet, Printer, RotateCcw, Send, Trash2, Users } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { AlertTriangle, CalendarRange, ChevronDown, ChevronUp, Clock, Copy, Download, FileSpreadsheet, Printer, RotateCcw, Send, ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
 import AssignmentPanel from "../components/roster/AssignmentPanel";
 import RosterFilters from "../components/roster/RosterFilters";
 import RosterStatusBadge from "../components/roster/RosterStatusBadge";
@@ -8,8 +8,10 @@ import RosterSummary from "../components/roster/RosterSummary";
 import RosterTable from "../components/roster/RosterTable";
 import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
+import { getWorkLocations, saveStaffProfile, saveWorkLocation } from "../utils/storage";
 import {
   branchOptions,
+  buildRosterEntry,
   calculateRosterSummary,
   daysInMonth,
   loadRequirements,
@@ -18,8 +20,10 @@ import {
   loadRosterStatuses,
   monthKey,
   positionOptions,
+  rosterCellKey,
   saveRosterData,
   saveRosterStatuses,
+  STATUS_REPORT_KEY,
   workloadFor,
 } from "../utils/roster";
 
@@ -191,14 +195,156 @@ export default function StaffRoster() {
     if (profile) setSelectedProfile(profile);
   };
 
-  const warnings = useMemo(() => filteredEmployees.flatMap((employee) => {
+  const populateTestData = () => {
+    // 1. Ensure Dubai and Abu Dhabi exist in work locations
+    const currentLocs = getWorkLocations();
+    const locNames = currentLocs.map(l => l.name);
+    if (!locNames.includes("Dubai")) {
+      saveWorkLocation("Dubai");
+    }
+    if (!locNames.includes("Abu Dhabi")) {
+      saveWorkLocation("Abu Dhabi");
+    }
+
+    // 2. Sample staff with roles across Kitchen and Management
+    const testStaff = [
+      { employeeId: "EMP-1001", fullName: "Ahmed Al Mansoori", jobTitle: "Cashier", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 111 2233" },
+      { employeeId: "EMP-1002", fullName: "Fatima Noor", jobTitle: "Cashier", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 222 3344" },
+      { employeeId: "EMP-1003", fullName: "Chef Maria Santos", jobTitle: "Cooking", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 333 4455" },
+      { employeeId: "EMP-1004", fullName: "Tariq Mahmoud", jobTitle: "Cooking", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 444 5566" },
+      { employeeId: "EMP-1005", fullName: "Elena Rostova", jobTitle: "Dough", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 555 6677" },
+      { employeeId: "EMP-1006", fullName: "Hassan Ali", jobTitle: "Wrapping", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 666 7788" },
+      { employeeId: "EMP-1007", fullName: "Kavita Patel", jobTitle: "Helping", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 777 8899" },
+      { employeeId: "EMP-1008", fullName: "Rami Haddad", jobTitle: "Branch Manager", department: "Management Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 888 9900" },
+      { employeeId: "EMP-1009", fullName: "Sara Jenkins", jobTitle: "HR", department: "Management Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 999 0011" },
+      { employeeId: "EMP-1010", fullName: "Omar Qasim", jobTitle: "Accountant", department: "Management Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 123 4567" },
+      // Abu Dhabi branch staff
+      { employeeId: "EMP-1011", fullName: "Bilal Khan", jobTitle: "Cashier", department: "Kitchen Staff", workLocation: "Abu Dhabi", assignedShift: "Morning@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 333 1122" },
+      { employeeId: "EMP-1012", fullName: "Zayn Malik", jobTitle: "Cooking", department: "Kitchen Staff", workLocation: "Abu Dhabi", assignedShift: "Evening@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 444 2233" },
+    ];
+
+    testStaff.forEach(p => saveStaffProfile(p));
+
+    // 3. Set standard requirements in STATUS_REPORT_KEY so understaffed calculations show balanced numbers
+    try {
+      const storedConfig = JSON.parse(localStorage.getItem(STATUS_REPORT_KEY) || "{}") || {};
+      const newRequirements = { ...(storedConfig.requirements || {}) };
+      const branchesToSet = ["Dubai", "Abu Dhabi"];
+      const shiftsToSet = ["Morning", "Evening"];
+      const kitchenPos = ["Cashier", "Dough", "Cooking", "Wrapping", "Helping"];
+      const mgmtPos = ["Branch Manager", "HR", "Accountant"];
+
+      branchesToSet.forEach(b => {
+        shiftsToSet.forEach(s => {
+          kitchenPos.forEach(pos => {
+            newRequirements[`${b}::${s}::${pos}`] = 2;
+          });
+          mgmtPos.forEach(pos => {
+            newRequirements[`${b}::${s}::${pos}`] = 1;
+          });
+        });
+      });
+      localStorage.setItem(STATUS_REPORT_KEY, JSON.stringify({ ...storedConfig, requirements: newRequirements }));
+    } catch {}
+
+    // 4. Populate active roster schedules across the month for each staff
+    const currentRoster = { ...roster };
+    const days = daysInMonth(filters.month);
+
+    days.forEach((dayObj, dayIdx) => {
+      testStaff.forEach((p, pIdx) => {
+        const assignedShift = (p.assignedShift || "").includes("Evening") ? "Evening" : "Morning";
+        const assignedBranch = (p.assignedShift || "").includes("Abu Dhabi") ? "Abu Dhabi" : "Dubai";
+        const dept = p.department || "Kitchen Staff";
+
+        // Give each staff 1 day off every 6 days
+        const isOffDay = (dayIdx + pIdx) % 7 === 0;
+
+        const rKey = rosterCellKey({
+          month: filters.month,
+          branch: assignedBranch,
+          department: dept,
+          position: p.jobTitle,
+          shift: assignedShift,
+          date: dayObj.date,
+        });
+
+        const existing = currentRoster[rKey] || [];
+        if (!existing.some(e => e.employeeId === p.employeeId)) {
+          currentRoster[rKey] = [
+            ...existing,
+            buildRosterEntry({
+              employee: p,
+              date: dayObj.date,
+              branch: assignedBranch,
+              department: dept,
+              position: p.jobTitle,
+              shift: assignedShift,
+              status: isOffDay ? "OFF" : "Working",
+            })
+          ];
+        }
+      });
+    });
+
+    try {
+      saveRosterData(currentRoster);
+      setRoster({ ...currentRoster });
+
+      window.dispatchEvent(new Event("staffProfilesChanged"));
+      window.dispatchEvent(new Event("workLocationsChanged"));
+      window.dispatchEvent(new Event("staffRosterChanged"));
+
+      refresh();
+      window.alert("Test data populated successfully for " + filters.month + " with 12 employees across Dubai and Abu Dhabi!");
+    } catch (err) {
+      console.error("Failed to populate test data:", err);
+      window.alert("Error populating test data: " + err.message);
+    }
+  };
+
+  const [showAllWarnings, setShowAllWarnings] = useState(false);
+
+  const structuredWarnings = useMemo(() => filteredEmployees.flatMap((employee) => {
     const workload = workloadFor(employee, roster, filters.month);
-    const list = [];
-    if (workload.workingDays > 24) list.push(`${employee.fullName} has ${workload.workingDays} working days this month.`);
-    if (workload.off === 0 && workload.workingDays > 6) list.push(`${employee.fullName} has no OFF day recorded.`);
-    if (workload.hours > 240) list.push(`${employee.fullName} has excessive scheduled hours.`);
-    return list;
+    const items = [];
+    if (workload.workingDays > 24) {
+      items.push({
+        id: `${employee.employeeId}-days`,
+        employee,
+        type: "days",
+        title: "Excessive Working Days",
+        detail: `${workload.workingDays} working days scheduled (Recommended: max 24)`,
+        severity: workload.workingDays > 26 ? "critical" : "warning",
+        metric: `${workload.workingDays}d`,
+      });
+    }
+    if (workload.off === 0 && workload.workingDays > 6) {
+      items.push({
+        id: `${employee.employeeId}-off`,
+        employee,
+        type: "off",
+        title: "No Weekly Rest Day",
+        detail: "0 OFF days recorded this month",
+        severity: "critical",
+        metric: "0 OFF",
+      });
+    }
+    if (workload.hours > 240) {
+      items.push({
+        id: `${employee.employeeId}-hours`,
+        employee,
+        type: "hours",
+        title: "Overtime Overload",
+        detail: `${workload.hours} hours logged (Over 240 hrs limit)`,
+        severity: "warning",
+        metric: `${workload.hours}h`,
+      });
+    }
+    return items;
   }), [filteredEmployees, filters.month, roster]);
+
+  const displayedWarnings = showAllWarnings ? structuredWarnings : structuredWarnings.slice(0, 4);
 
   return (
     <div className="mx-auto max-w-[1800px] space-y-5">
@@ -212,6 +358,7 @@ export default function StaffRoster() {
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Branch-wise monthly roster for Kitchen Staff and Management Staff, connected to active signed employees and staffing requirements.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <ActionButton icon={Sparkles} label="Load Test Data" onClick={populateTestData} />
               <ActionButton icon={FileSpreadsheet} label="Export CSV" onClick={exportCsv} />
               <ActionButton icon={Download} label="Export PDF" onClick={() => exportToPDF("staff-roster-print", `Staff_Roster_${filters.month}.pdf`)} />
               <ActionButton icon={Printer} label="Print" onClick={() => printDocument("staff-roster-print")} />
@@ -230,9 +377,71 @@ export default function StaffRoster() {
 
       <RosterSummary summary={summary} status={status} />
 
-      {warnings.length > 0 && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-          {warnings.slice(0, 5).map((warning) => <p key={warning}>{warning}</p>)}
+      {/* Structured Workload & Overwork Alerts */}
+      {structuredWarnings.length > 0 && (
+        <section className="overflow-hidden rounded-2xl border border-amber-200/90 bg-gradient-to-b from-amber-50/70 to-white shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200/70 px-5 py-3 bg-amber-100/40">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700">
+                <ShieldAlert size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider text-amber-950">
+                  Workload & Labor Compliance Alerts ({structuredWarnings.length})
+                </h3>
+                <p className="text-[11px] font-semibold text-amber-800/80">
+                  Employees exceeding standard UAE monthly working limits or missing mandatory rest days
+                </p>
+              </div>
+            </div>
+
+            {structuredWarnings.length > 4 && (
+              <button
+                type="button"
+                onClick={() => setShowAllWarnings(!showAllWarnings)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-black text-amber-900 shadow-2xs hover:bg-amber-50 transition cursor-pointer"
+              >
+                <span>{showAllWarnings ? "Show Less" : `View All (${structuredWarnings.length})`}</span>
+                {showAllWarnings ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-2.5 p-4 sm:grid-cols-2 lg:grid-cols-4">
+            {displayedWarnings.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => openProfile(item.employee.employeeId)}
+                className="group relative flex cursor-pointer items-start justify-between gap-3 rounded-xl border border-amber-200/80 bg-white p-3 shadow-2xs transition hover:border-amber-400 hover:shadow-xs"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-amber-100 text-[10px] font-black text-amber-800">
+                      {String(item.employee.fullName || "E").slice(0, 2).toUpperCase()}
+                    </span>
+                    <strong className="truncate text-xs font-black text-slate-900 group-hover:text-amber-700 transition">
+                      {item.employee.fullName}
+                    </strong>
+                  </div>
+                  <p className="mt-1 text-[11px] font-semibold text-slate-500 truncate">
+                    {item.employee.jobTitle || "Staff"} · {item.employee.branch || item.employee.workLocation || "All Branches"}
+                  </p>
+                  <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-amber-900">
+                    <Clock size={11} className="text-amber-600 shrink-0" />
+                    <span>{item.detail}</span>
+                  </p>
+                </div>
+
+                <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-black ${
+                  item.severity === "critical" 
+                    ? "bg-rose-100 text-rose-700 border border-rose-200" 
+                    : "bg-amber-100 text-amber-800 border border-amber-200"
+                }`}>
+                  {item.metric}
+                </span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
