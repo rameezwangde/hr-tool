@@ -4,9 +4,9 @@ import PayrollStatusBadge from "./PayrollStatusBadge";
 
 function Row({ label, value }) {
   return (
-    <div className="grid grid-cols-[1.2fr_1fr] border-b border-slate-200 text-sm last:border-b-0">
-      <div className="bg-slate-50 px-3 py-2 font-bold text-slate-600">{label}</div>
-      <div className="px-3 py-2 font-semibold text-slate-900">{value}</div>
+    <div className="grid grid-cols-[1.2fr_1fr] border-b border-slate-200 text-sm last:border-b-0 bg-white">
+      <div className="px-3 py-2 font-bold text-slate-700 border-r border-slate-200" style={{ backgroundColor: "#f8fafc" }}>{label}</div>
+      <div className="px-3 py-2 font-semibold text-slate-900 bg-white">{value}</div>
     </div>
   );
 }
@@ -29,21 +29,51 @@ export default function SalarySlipPreview({ employee, employees = [], onEmployee
               {employees.map((person) => <option key={person.employeeId} value={person.employeeId}>{person.fullName} / {person.employeeId}</option>)}
             </select>
             <PayrollStatusBadge status={status} />
-            <button type="button" onClick={() => onSaveSlip(employee, calculation, "Ready for Review")} className="btn-secondary inline-flex h-10 items-center gap-2"><Stamp size={16} /> Preview Salary Slip</button>
-            <button type="button" onClick={() => onExport("salary-slip-print")} className="btn-secondary inline-flex h-10 items-center gap-2"><Download size={16} /> Export PDF</button>
-            <button type="button" onClick={() => onPrint("salary-slip-print")} className="btn-secondary inline-flex h-10 items-center gap-2"><Printer size={16} /> Print</button>
-            <button type="button" onClick={() => onSaveSlip(employee, calculation, "Approved")} className="btn-primary h-10">Mark as Approved</button>
-            <button type="button" onClick={() => onSaveSlip(employee, calculation, "Paid")} className="btn-primary h-10 bg-emerald-600 hover:bg-emerald-700">Mark as Paid</button>
+            <button 
+              type="button" 
+              onClick={() => {
+                onSaveSlip(employee, calculation, "Ready for Review");
+                const el = document.getElementById("salary-slip-print");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }} 
+              className="btn-secondary inline-flex h-10 items-center gap-2 cursor-pointer hover:bg-slate-50"
+            >
+              <Stamp size={16} className="text-violet-600" />
+              <span>Preview Salary Slip</span>
+            </button>
+            <button 
+              type="button" 
+              onClick={() => onExport("salary-slip-print", `Salary_Slip_${employee.employeeId}_${month}.pdf`)} 
+              className="btn-secondary inline-flex h-10 items-center gap-2 cursor-pointer hover:bg-slate-50"
+            >
+              <Download size={16} className="text-violet-600" />
+              <span>Export PDF</span>
+            </button>
+            <button 
+              type="button" 
+              onClick={() => onPrint("salary-slip-print")} 
+              className="btn-secondary inline-flex h-10 items-center gap-2 cursor-pointer hover:bg-slate-50"
+            >
+              <Printer size={16} className="text-violet-600" />
+              <span>Print</span>
+            </button>
+            <button type="button" onClick={() => onSaveSlip(employee, calculation, "Approved")} className="btn-primary h-10 cursor-pointer">Mark as Approved</button>
+            <button type="button" onClick={() => onSaveSlip(employee, calculation, "Paid")} className="btn-primary h-10 bg-emerald-600 hover:bg-emerald-700 cursor-pointer">Mark as Paid</button>
           </div>
         </div>
       </section>
 
-      <article id="salary-slip-print" className="mx-auto max-w-4xl rounded-xl border border-slate-300 bg-white p-8 shadow-sm print:shadow-none">
-        <header className="border-b-2 border-slate-900 pb-4 text-center">
-          <h1 className="text-2xl font-black uppercase tracking-wide text-slate-950">Salary Slip</h1>
-          <p className="mt-1 font-bold text-slate-600">Payroll Month: {month}</p>
+      <article 
+        id="salary-slip-print" 
+        className="mx-auto max-w-3xl rounded-xl border border-slate-300 bg-white p-6 shadow-sm print:shadow-none text-slate-900"
+        style={{ color: "#0f172a", backgroundColor: "#ffffff" }}
+      >
+        <header className="border-b-2 border-slate-900 pb-3 text-center">
+          <h1 className="text-xl font-black uppercase tracking-wide text-slate-950" style={{ color: "#0f172a" }}>Salary Slip</h1>
+          <p className="mt-0.5 text-xs font-bold text-slate-600" style={{ color: "#475569" }}>Payroll Month: {month}</p>
         </header>
-        <div className="mt-6 grid gap-5 md:grid-cols-2">
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
           <section className="overflow-hidden rounded-lg border border-slate-200">
             <Row label="Employee name" value={employee.fullName} />
             <Row label="Employee ID" value={employee.employeeId} />
@@ -53,6 +83,7 @@ export default function SalarySlipPreview({ employee, employees = [], onEmployee
             <Row label="Position (E)" value={calculation.positionE || "Not provided"} />
             <Row label="Payment method" value={employee.paymentMethod || "Not provided"} />
           </section>
+
           <section className="overflow-hidden rounded-lg border border-slate-200">
             <Row label="Monthly Salary (M)" value={formatVnd(calculation.monthlyM)} />
             <Row label="Monthly Salary (E)" value={formatVnd(calculation.monthlyE)} />
@@ -63,7 +94,8 @@ export default function SalarySlipPreview({ employee, employees = [], onEmployee
             <Row label="Cumulative Hours" value={calculation.cumulativeHours.toFixed(2)} />
           </section>
         </div>
-        <section className="mt-5 overflow-hidden rounded-lg border border-slate-200">
+
+        <section className="mt-3 overflow-hidden rounded-lg border border-slate-200">
           <Row label="Hourly Rate (M)" value={formatVnd(calculation.hourlyM)} />
           <Row label="Hourly Rate (E)" value={formatVnd(calculation.hourlyE)} />
           <Row label="Morning Salary" value={formatVnd(calculation.salaryM)} />
@@ -74,9 +106,10 @@ export default function SalarySlipPreview({ employee, employees = [], onEmployee
           <Row label="Total Salary Payable (E)" value={formatVnd(calculation.payableE)} />
           <Row label="Final Total Salary" value={formatVnd(calculation.finalPayable)} />
         </section>
-        <footer className="mt-12 grid grid-cols-2 gap-12 text-sm">
-          <div className="border-t border-slate-400 pt-3"><p className="font-black">Employee Signature</p><p className="mt-1 text-slate-500">Name and signature</p></div>
-          <div className="border-t border-slate-400 pt-3"><p className="font-black">Prepared By</p><p className="mt-1 text-slate-500">HR / Date prepared: {new Date().toLocaleDateString()}</p></div>
+
+        <footer className="mt-8 grid grid-cols-2 gap-8 text-xs text-slate-800" style={{ color: "#1e293b" }}>
+          <div className="border-t border-slate-400 pt-2"><p className="font-black text-slate-900">Employee Signature</p><p className="mt-0.5 text-slate-500">Name and signature</p></div>
+          <div className="border-t border-slate-400 pt-2"><p className="font-black text-slate-900">Prepared By</p><p className="mt-0.5 text-slate-500">HR / Date prepared: {new Date().toLocaleDateString()}</p></div>
         </footer>
       </article>
     </div>

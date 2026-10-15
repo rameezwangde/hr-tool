@@ -10,6 +10,7 @@ import PayrollHistory from "../components/payroll/PayrollHistory";
 import PayrollWarnings from "../components/payroll/PayrollWarnings";
 import SalaryCalculator from "../components/payroll/SalaryCalculator";
 import SalarySlipPreview from "../components/payroll/SalarySlipPreview";
+import { exportToPDF, printDocument } from "../utils/pdfGenerator";
 import { getStaffProfiles, saveStaffProfile } from "../utils/storage";
 import {
   calculatePayroll,
@@ -171,16 +172,8 @@ export default function Payroll() {
     setSlips(saveSlips(slips.filter((item) => item.id !== slip.id)));
   };
 
-  const exportPdf = async (id) => {
-    const element = document.getElementById(id);
-    if (!element) return;
-    const canvas = await html2canvas(element, { backgroundColor: "#ffffff", scale: 2, useCORS: true });
-    const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [canvas.width, canvas.height] });
-    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, canvas.width, canvas.height);
-    pdf.save("Salary_Slip.pdf");
-  };
-
-  const printSection = () => window.print();
+  const exportPdf = (id, filename) => exportToPDF(id, filename || `Salary_Slip_${filters.month}.pdf`);
+  const printSection = (id) => printDocument(id || "salary-slip-print");
 
   const populatePayrollTestData = () => {
     // 1. Ensure staff profiles have valid salaries, contract status, and insurance

@@ -18,13 +18,17 @@ export const exportToPDF = async (elementId, filename = "document.pdf") => {
       get(target, prop) {
         const value = target[prop];
         if (typeof value === 'string' && (value.includes('oklch') || value.includes('oklab'))) {
-          return value.replace(/(oklch|oklab)\([^)]+\)/g, 'rgb(0,0,0)');
+          // If property is background or border, replace with light gray/white instead of solid black
+          const isBackground = String(prop).toLowerCase().includes('background') || String(prop).toLowerCase().includes('fill');
+          const isBorder = String(prop).toLowerCase().includes('border') || String(prop).toLowerCase().includes('outline');
+          const fallback = isBackground ? 'rgb(248, 250, 252)' : isBorder ? 'rgb(226, 232, 240)' : 'rgb(15, 23, 42)';
+          return value.replace(/(oklch|oklab)\([^)]+\)/g, fallback);
         }
         if (typeof value === 'function') {
           return function (...args) {
             const res = target[prop].apply(target, args);
             if (typeof res === 'string' && (res.includes('oklch') || res.includes('oklab'))) {
-              return res.replace(/(oklch|oklab)\([^)]+\)/g, 'rgb(0,0,0)');
+              return res.replace(/(oklch|oklab)\([^)]+\)/g, 'rgb(241, 245, 249)');
             }
             return res;
           };
@@ -34,12 +38,17 @@ export const exportToPDF = async (elementId, filename = "document.pdf") => {
     });
   };
 
-  // Temporary replacement of oklch/oklab to prevent html2canvas from crashing
+  // Temporary replacement of oklch/oklab in stylesheet rules to prevent html2canvas crash while preserving colors
   styleElements.forEach(style => {
     try {
       if (style.innerHTML && (style.innerHTML.includes('oklch') || style.innerHTML.includes('oklab'))) {
         stylesWithOklch.push({ element: style, originalText: style.innerHTML });
-        style.innerHTML = style.innerHTML.replace(/(oklch|oklab)\([^)]+\)/g, 'rgb(0,0,0)');
+        // Carefully convert oklch colors: background/fill to light gray, text color definitions to dark slate
+        style.innerHTML = style.innerHTML
+          .replace(/color:\s*oklch\([^)]+\)/gi, 'color: rgb(15, 23, 42)')
+          .replace(/background(-color)?:\s*oklch\([^)]+\)/gi, 'background$1: rgb(248, 250, 252)')
+          .replace(/border(-color)?:\s*oklch\([^)]+\)/gi, 'border$1: rgb(226, 232, 240)')
+          .replace(/oklch\([^)]+\)/gi, 'rgb(15, 23, 42)');
       }
     } catch (e) {
       console.warn("Could not modify style innerHTML", e);
