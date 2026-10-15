@@ -148,14 +148,14 @@ export const employeesForCell = (employees, { branch, position, shift }, roster,
     ? `Already assigned to ${sameTime.branch} ${sameTime.shift}`
     : "";
   
-  const warningList = [];
-  if (!matchingPosition) warningList.push(`Different position (${employee.jobTitle || "No Position"})`);
-  if (!matchingBranch) warningList.push(`Assigned to ${branches[0]}`);
-  if (!matchingShift) warningList.push(`Not available for ${shift}`);
-  if (sameDayOtherShift) warningList.push("Already scheduled on the other shift");
+  const warnings = [];
+  if (!matchingPosition) warnings.push({ label: employee.jobTitle || "No Position", type: "position" });
+  if (!matchingBranch) warnings.push({ label: branches[0] || "Other Branch", type: "branch" });
+  if (!matchingShift) warnings.push({ label: `Not ${shift}`, type: "shift" });
+  if (sameDayOtherShift) warnings.push({ label: "On Other Shift", type: "shift" });
   
-  const warning = warningList.join(", ");
-  return { employee, available: !disabledReason, warning, disabledReason };
+  const warning = warnings.map(w => w.label).join(", ");
+  return { employee, available: !disabledReason, warning, warnings, disabledReason, matchingPosition, matchingBranch };
 });
 
 export const buildRosterEntry = ({ employee, date, branch, department, position, shift, status = "Working" }) => ({
