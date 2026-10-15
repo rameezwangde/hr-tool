@@ -217,12 +217,12 @@ export default function Payroll() {
 
     updatedProfiles.forEach((p) => saveStaffProfile(p));
 
-    // 2. Populate attendance records for the month
+    // 2. Populate attendance records for the month for ALL employees
     const newAttendance = [];
     const [year, monthNum] = filters.month.split("-").map(Number);
     const daysInCurrentMonth = new Date(year, monthNum, 0).getDate();
 
-    updatedProfiles.slice(0, 10).forEach((employee) => {
+    updatedProfiles.forEach((employee) => {
       for (let day = 1; day <= Math.min(24, daysInCurrentMonth); day++) {
         const dateStr = `${filters.month}-${String(day).padStart(2, "0")}`;
         const isOff = day % 7 === 0;
@@ -249,10 +249,10 @@ export default function Payroll() {
 
     saveAttendance(newAttendance);
 
-    // 3. Generate sample salary slips
-    const newSlips = updatedProfiles.slice(0, 6).map((employee, idx) => {
+    // 3. Generate sample salary slips for all staff
+    const newSlips = updatedProfiles.map((employee, idx) => {
       const base = salaryCatalog[employee.jobTitle] || 12000000;
-      const status = idx === 0 ? "Paid" : idx < 3 ? "Approved" : "Ready for Review";
+      const status = idx < 4 ? "Paid" : idx < 9 ? "Approved" : "Ready for Review";
       return {
         id: `${employee.employeeId}-${filters.month}`,
         month: filters.month,
@@ -260,7 +260,7 @@ export default function Payroll() {
         employeeId: employee.employeeId,
         branch: employee.workLocation || "Dubai",
         position: employee.jobTitle || "Cashier",
-        hoursM: 168,
+        hoursM: 147,
         hoursE: 0,
         grossEarnings: base,
         deductions: Math.round(base * 0.105),

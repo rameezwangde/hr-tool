@@ -172,14 +172,14 @@ export const calculatePayroll = (employee, month, records, adjustmentInput = {})
   const salaryE = hourlyE * hoursE;
   const earningsM = numberValue(adjustments.parkingAllowanceM) + numberValue(adjustments.commissionM) + numberValue(adjustments.nightSupportM) + numberValue(adjustments.holidayPayM);
   const earningsE = numberValue(adjustments.parkingAllowanceE) + numberValue(adjustments.commissionE) + numberValue(adjustments.nightSupportE) + numberValue(adjustments.holidayPayE);
-  const deductionsM = numberValue(adjustments.socialInsuranceM || employee.socialInsuranceAmount / 2) + numberValue(adjustments.deductionM);
-  const deductionsE = numberValue(adjustments.socialInsuranceE || employee.socialInsuranceAmount / 2) + numberValue(adjustments.deductionE);
-  const payableM = salaryM + earningsM - deductionsM;
-  const payableE = salaryE + earningsE - deductionsE;
+  const deductionsM = (salaryM + earningsM > 0) ? (numberValue(adjustments.socialInsuranceM || employee.socialInsuranceAmount / 2) + numberValue(adjustments.deductionM)) : 0;
+  const deductionsE = (salaryE + earningsE > 0) ? (numberValue(adjustments.socialInsuranceE || employee.socialInsuranceAmount / 2) + numberValue(adjustments.deductionE)) : 0;
+  const payableM = Math.max(0, salaryM + earningsM - deductionsM);
+  const payableE = Math.max(0, salaryE + earningsE - deductionsE);
   const combined = salaryM + salaryE;
   const totalEarnings = earningsM + earningsE + numberValue(adjustments.customEarning);
   const totalDeductions = deductionsM + deductionsE + numberValue(adjustments.personalIncomeTax) + numberValue(adjustments.customDeduction);
-  const finalPayable = payableM + payableE + numberValue(adjustments.customEarning) - numberValue(adjustments.personalIncomeTax) - numberValue(adjustments.customDeduction);
+  const finalPayable = Math.max(0, payableM + payableE + numberValue(adjustments.customEarning) - numberValue(adjustments.personalIncomeTax) - numberValue(adjustments.customDeduction));
 
   return {
     employee,
@@ -218,9 +218,10 @@ export const calculatePayroll = (employee, month, records, adjustmentInput = {})
 export const validateAttendance = (draft, records) => {
   const errors = [];
   const duration = calculateWorkedHours(draft.checkIn, draft.checkOut, draft.breakMinutes);
-  const shiftDuration = calculateWorkedHours(draft.checkIn, draft.checkOut, 0);
+  const shiftDurationHours = calculateWorkedHours(draft.checkIn, draft.checkOut, 0);
+  const shiftDurationMinutes = shiftDurationHours * 60;
   if (draft.checkIn && draft.checkOut && duration < 0) errors.push("Working hours cannot be negative.");
-  if (numberValue(draft.breakMinutes) > shiftDuration) errors.push("Break duration cannot be greater than the shift duration.");
+  if (draft.checkIn && draft.checkOut && numberValue(draft.breakMinutes) > shiftDurationMinutes) errors.push("Break duration cannot be greater than the shift duration.");
   if (!draft.allowOvernight && draft.checkIn && draft.checkOut && parseMinutes(draft.checkOut) < parseMinutes(draft.checkIn)) {
     errors.push("Check-out is earlier than check-in. Turn on overnight shift if checkout is next day.");
   }
