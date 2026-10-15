@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Calculator, CalendarCheck2, FileText, History, WalletCards } from "lucide-react";
+import { Calculator, CalendarCheck2, FileText, History, Sparkles, WalletCards } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import AttendanceEntry from "../components/payroll/AttendanceEntry";
@@ -10,6 +10,7 @@ import PayrollHistory from "../components/payroll/PayrollHistory";
 import PayrollWarnings from "../components/payroll/PayrollWarnings";
 import SalaryCalculator from "../components/payroll/SalaryCalculator";
 import SalarySlipPreview from "../components/payroll/SalarySlipPreview";
+import { getStaffProfiles, saveStaffProfile } from "../utils/storage";
 import {
   calculatePayroll,
   loadAdjustments,
@@ -181,6 +182,105 @@ export default function Payroll() {
 
   const printSection = () => window.print();
 
+  const populatePayrollTestData = () => {
+    // 1. Ensure staff profiles have valid salaries, contract status, and insurance
+    const existing = getStaffProfiles();
+    const salaryCatalog = {
+      "Cashier": 12000000,
+      "Cooking": 15000000,
+      "Dough": 13000000,
+      "Wrapping": 11000000,
+      "Helping": 9000000,
+      "Branch Manager": 28000000,
+      "HR": 22000000,
+      "Accountant": 20000000,
+      "Purchase and Inventory Controller": 18000000,
+    };
+
+    const updatedProfiles = existing.map((p) => {
+      const standardSalary = salaryCatalog[p.jobTitle] || 12000000;
+      return {
+        ...p,
+        contractStatus: "Signed",
+        employmentStatus: "Active",
+        baseSalary: p.baseSalary || standardSalary,
+        grossSalary: p.grossSalary || standardSalary,
+        morningMonthlySalary: p.morningMonthlySalary || standardSalary,
+        eveningMonthlySalary: p.eveningMonthlySalary || Math.round(standardSalary * 0.9),
+        socialInsuranceAmount: p.socialInsuranceAmount || Math.round(standardSalary * 0.08),
+        socialInsurancePct: p.socialInsurancePct || 8,
+        healthInsurancePct: p.healthInsurancePct || 1.5,
+        unemploymentInsurancePct: p.unemploymentInsurancePct || 1,
+        standardMonthlyHours: 208,
+      };
+    });
+
+    updatedProfiles.forEach((p) => saveStaffProfile(p));
+
+    // 2. Populate attendance records for the month
+    const newAttendance = [];
+    const [year, monthNum] = filters.month.split("-").map(Number);
+    const daysInCurrentMonth = new Date(year, monthNum, 0).getDate();
+
+    updatedProfiles.slice(0, 10).forEach((employee) => {
+      for (let day = 1; day <= Math.min(24, daysInCurrentMonth); day++) {
+        const dateStr = `${filters.month}-${String(day).padStart(2, "0")}`;
+        const isOff = day % 7 === 0;
+        newAttendance.push({
+          id: `${employee.employeeId}-${dateStr}-Morning`,
+          date: dateStr,
+          employeeId: employee.employeeId,
+          employeeName: employee.fullName,
+          branch: employee.workLocation || "Dubai",
+          department: employee.department || "Kitchen Staff",
+          position: employee.jobTitle || "Cashier",
+          shift: "Morning",
+          checkIn: isOff ? "" : "09:30",
+          checkOut: isOff ? "" : "17:30",
+          breakMinutes: isOff ? 0 : 60,
+          workedHours: isOff ? 0 : 7,
+          status: isOff ? "Day Off" : "Present",
+          hourlyRate: Math.round((salaryCatalog[employee.jobTitle] || 12000000) / 208),
+          earnedSalary: isOff ? 0 : Math.round(((salaryCatalog[employee.jobTitle] || 12000000) / 208) * 7),
+          notes: "",
+        });
+      }
+    });
+
+    saveAttendance(newAttendance);
+
+    // 3. Generate sample salary slips
+    const newSlips = updatedProfiles.slice(0, 6).map((employee, idx) => {
+      const base = salaryCatalog[employee.jobTitle] || 12000000;
+      const status = idx === 0 ? "Paid" : idx < 3 ? "Approved" : "Ready for Review";
+      return {
+        id: `${employee.employeeId}-${filters.month}`,
+        month: filters.month,
+        employeeName: employee.fullName,
+        employeeId: employee.employeeId,
+        branch: employee.workLocation || "Dubai",
+        position: employee.jobTitle || "Cashier",
+        hoursM: 168,
+        hoursE: 0,
+        grossEarnings: base,
+        deductions: Math.round(base * 0.105),
+        finalPayable: Math.round(base * 0.895),
+        status,
+        paymentDate: status === "Paid" ? new Date().toISOString().slice(0, 10) : "",
+        preparedAt: new Date().toISOString(),
+      };
+    });
+
+    saveSlips(newSlips);
+
+    // Sync all tabs
+    refresh();
+    window.dispatchEvent(new Event("staffProfilesChanged"));
+    window.dispatchEvent(new Event("payrollDataChanged"));
+
+    window.alert(`Payroll test data generated for ${filters.month}!\n- Configured salaries & insurance for all staff\n- Populated attendance records\n- Generated sample processed slips`);
+  };
+
   const workflow = ["Attendance Entered", "Salary Automatically Calculated", "HR Reviews Calculation", "Salary Slip Generated", "Payroll Approved", "Marked as Paid"];
 
   return (
@@ -194,11 +294,24 @@ export default function Payroll() {
               <h1 className="mt-4 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">Payroll Management</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Attendance, automatic salary calculation, formal salary slips, and payroll history from signed contracts and active staff profiles.</p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-black text-slate-700">Month:</span>
-              <label className="relative block w-40">
-                <input type="month" value={filters.month} onChange={(event) => setFilters({ ...filters, month: event.target.value })} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-300" />
-              </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={populatePayrollTestData}
+                className="inline-flex h-10 items-center gap-2 rounded-lg bg-violet-600 px-3.5 text-xs font-black text-white hover:bg-violet-700 transition shadow-xs cursor-pointer"
+              >
+                <Sparkles size={15} />
+                Load Test Data
+              </button>
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 shadow-2xs">
+                <span className="text-xs font-black text-slate-600">Month:</span>
+                <input
+                  type="month"
+                  value={filters.month}
+                  onChange={(event) => setFilters({ ...filters, month: event.target.value })}
+                  className="bg-transparent text-xs font-black text-slate-900 outline-none cursor-pointer"
+                />
+              </div>
             </div>
           </div>
         </div>
