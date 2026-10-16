@@ -1,5 +1,6 @@
 // Initial Mock Data setup if empty
 const initializeStorage = () => {
+  if (typeof localStorage === 'undefined') return;
   if (!localStorage.getItem('contracts')) {
     localStorage.setItem('contracts', JSON.stringify([]));
   }
@@ -13,6 +14,10 @@ const initializeStorage = () => {
 
 initializeStorage();
 
+export const notifyContractsChanged = () => {
+  window.dispatchEvent(new Event('contractsChanged'));
+};
+
 export const getContracts = () => {
   return JSON.parse(localStorage.getItem('contracts') || '[]');
 };
@@ -21,6 +26,7 @@ export const saveContract = (contract) => {
   const contracts = getContracts();
   contracts.push(contract);
   localStorage.setItem('contracts', JSON.stringify(contracts));
+  notifyContractsChanged();
 };
 
 export const getContractDrafts = () => {
@@ -57,6 +63,7 @@ export const updateContract = (contractNumber, updatedFields) => {
   if (index !== -1) {
     contracts[index] = { ...contracts[index], ...updatedFields };
     localStorage.setItem('contracts', JSON.stringify(contracts));
+    notifyContractsChanged();
   }
 };
 

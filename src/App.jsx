@@ -9,6 +9,7 @@ import Documents from "./pages/Documents";
 import StaffStatusReport from "./pages/StaffStatusReport";
 import OrganizationChart from "./pages/OrganizationChart";
 import Payroll from "./pages/Payroll";
+import SocialInsurance from "./pages/SocialInsurance";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -41,7 +42,7 @@ function App() {
             <Route path="interview-schedules" element={<ModulePlaceholder title="Interview Schedules" />} />
             <Route path="staff-roster" element={<StaffRoster />} />
             <Route path="payroll" element={<Payroll />} />
-            <Route path="social-insurance" element={<ModulePlaceholder title="Social Insurance" />} />
+            <Route path="social-insurance" element={<SocialInsurance />} />
             <Route path="chats" element={<ModulePlaceholder title="Chats & Announcements" />} />
             <Route path="exit-interviews" element={<ModulePlaceholder title="Exit Interviews" />} />
             <Route path="terminations" element={<ModulePlaceholder title="Terminations" />} />
