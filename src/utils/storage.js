@@ -429,70 +429,53 @@ const notifyCandidatesChanged = () => {
 const DEFAULT_CANDIDATES = [
   {
     id: "cand-1",
-    fullName: "Nguyen Van An",
-    phone: "0905 123 456",
-    email: "nguyenvanan.culinary@gmail.com",
-    roleApplied: "Head Chef",
-    department: "Kitchen Staff",
-    experience: "6 years culinary experience in Western & Mediterranean cuisine",
-    status: "Shortlisted", // "New", "Shortlisted", "Interview Scheduled", "Offered", "Rejected"
-    interviewDate: "2026-10-20",
-    interviewTime: "10:00",
+    fullName: "Alex Morgan",
+    phone: "+84 905 123 456",
+    email: "alex.morgan@example.com",
+    roleApplied: "Restaurant General Manager",
+    department: "Management Staff",
+    experience: "5+ years managing full-service Mediterranean restaurants and high-volume kitchen operations.",
+    status: "Shortlisted", // Shortlisted from the interview
+    interviewDate: "2026-10-16",
+    interviewTime: "14:00",
     interviewType: "In-Person",
-    interviewLocation: "Greek Souvlaki - Branch 1",
-    notes: "Strong Mediterranean cooking background, high leadership capability.",
-    resumeFileName: "Nguyen_Van_An_Resume.pdf",
+    interviewLocation: "Greek Souvlaki - Main Office, 2nd Floor",
+    notes: "Shortlisted from interview: Outstanding leadership abilities, fluent in English, strong operational cost control, ready for formal job offer.",
+    resumeFileName: "Alex_Morgan_Resume.pdf",
     resumeUrl: "",
-    resumeSummary: "Experienced Head Chef specializing in Greek & Mediterranean culinary operations. Managed kitchen teams of up to 15 members, inventory management, HACCP compliance, menu engineering, and food cost optimization.",
-    skills: ["Mediterranean Cuisine", "Kitchen Management", "HACCP Certified", "Food Costing"],
-    createdAt: "2026-10-15T09:00:00.000Z"
+    resumeSummary: "Results-driven Restaurant Manager with over 5 years of demonstrated success leading high-volume culinary and front-of-house teams. Expert in staff training, customer satisfaction, scheduling, and labor cost optimization.",
+    skills: ["F&B Operations", "P&L Management", "Team Leadership", "Customer Relations", "Inventory & HACCP"],
+    createdAt: "2026-10-17T09:00:00.000Z"
   },
   {
     id: "cand-2",
-    fullName: "Tran Thi Mai",
-    phone: "0912 987 654",
-    email: "mai.tranthi@outlook.com",
-    roleApplied: "Restaurant Supervisor",
-    department: "Management Staff",
-    experience: "4 years in F&B front-of-house hospitality",
-    status: "Interview Scheduled",
-    interviewDate: "2026-10-22",
-    interviewTime: "14:30",
-    interviewType: "Video Call (Google Meet)",
-    interviewLocation: "Online",
-    notes: "Fluent in English and Vietnamese, excellent customer engagement skills.",
-    resumeFileName: "Tran_Thi_Mai_CV.pdf",
-    resumeUrl: "",
-    resumeSummary: "Hospitality professional with 4+ years of floor management, staff scheduling, customer relationship management, and POS billing operations.",
-    skills: ["Team Leadership", "Customer Service", "POS Systems", "English & Vietnamese"],
-    createdAt: "2026-10-14T11:30:00.000Z"
-  },
-  {
-    id: "cand-3",
-    fullName: "Le Hoang Long",
-    phone: "0934 555 888",
-    email: "lehoanglong.chef@gmail.com",
-    roleApplied: "Cook / Kitchen Staff",
+    fullName: "Elena Rostova",
+    phone: "+84 912 345 678",
+    email: "elena.rostova@culinary.com",
+    roleApplied: "Head Chef",
     department: "Kitchen Staff",
-    experience: "2 years grill and gyro prep experience",
-    status: "New",
-    interviewDate: "",
-    interviewTime: "",
-    interviewType: "In-Person",
-    interviewLocation: "Greek Souvlaki - Nha Trang",
-    notes: "Enthusiastic line cook looking to grow into sous chef role.",
-    resumeFileName: "Le_Hoang_Long_Resume.pdf",
+    experience: "7 years Mediterranean and Greek cuisine expertise, kitchen team supervision.",
+    status: "Interview Scheduled",
+    interviewDate: "2026-10-25",
+    interviewTime: "11:00",
+    interviewType: "In-Person (Cooking Trial)",
+    interviewLocation: "Greek Souvlaki - Branch 1 Kitchen",
+    notes: "Invited for second-round tasting and kitchen management interview.",
+    resumeFileName: "Elena_Rostova_Resume.pdf",
     resumeUrl: "",
-    resumeSummary: "Dedicated Cook with 2 years of fast-paced grill prep, souvlaki wrapping, meat seasoning, and safety sanitization.",
-    skills: ["Grill Station", "Food Prep", "Hygiene Standards"],
-    createdAt: "2026-10-16T15:20:00.000Z"
+    resumeSummary: "Creative Head Chef with deep background in authentic Greek gyros, souvlaki, pita baking, and kitchen staff leadership. Certified in HACCP food safety standards.",
+    skills: ["Greek Cuisine", "Menu Design", "HACCP Certified", "Food Costing", "Kitchen Training"],
+    createdAt: "2026-10-17T09:30:00.000Z"
   }
 ];
 
 export const getCandidates = () => {
   try {
     const saved = localStorage.getItem('candidates');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
     localStorage.setItem('candidates', JSON.stringify(DEFAULT_CANDIDATES));
     return DEFAULT_CANDIDATES;
   } catch {

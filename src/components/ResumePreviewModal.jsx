@@ -123,7 +123,7 @@ export default function ResumePreviewModal({ candidate, onClose }) {
         {/* Modal Body / PDF Viewer Frame */}
         <div className="flex-1 overflow-y-auto bg-slate-100 p-4 sm:p-8 flex justify-center">
           {/* If the candidate uploaded a raw blob/data URL or PDF file */}
-          {candidate.resumeUrl && candidate.resumeUrl.startsWith("data:application/pdf") ? (
+          {candidate.resumeUrl && candidate.resumeUrl.includes("data:application/pdf") ? (
             <iframe
               src={candidate.resumeUrl}
               title="Uploaded PDF Resume"
