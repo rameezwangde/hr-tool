@@ -20,7 +20,7 @@ import {
 const navItems = [
   { path: "/", icon: <LayoutDashboard size={17} />, label: "Dashboard" },
   { path: "/staff-status-report", icon: <ClipboardList size={17} />, label: "Staff Status Report" },
-  { icon: <CalendarDays size={17} />, label: "Interview Schedules", disabled: true },
+  { path: "/interview-schedules", icon: <CalendarDays size={17} />, label: "Interview Schedules" },
   { path: "/contract-generator", icon: <FileSignature size={17} />, label: "Contract Generator" },
   { path: "/staff-profiles", icon: <Users size={17} />, label: "Staff Profiles" },
   { path: "/staff-roster", icon: <UserRoundCog size={17} />, label: "Staff Roster" },

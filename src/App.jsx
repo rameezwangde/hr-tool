@@ -10,6 +10,7 @@ import StaffStatusReport from "./pages/StaffStatusReport";
 import OrganizationChart from "./pages/OrganizationChart";
 import Payroll from "./pages/Payroll";
 import SocialInsurance from "./pages/SocialInsurance";
+import InterviewSchedules from "./pages/InterviewSchedules";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -39,7 +40,7 @@ function App() {
             <Route path="settings" element={<AdminSettings />} />
             <Route path="documents" element={<Documents />} />
             <Route path="staff-status-report" element={<StaffStatusReport />} />
-            <Route path="interview-schedules" element={<ModulePlaceholder title="Interview Schedules" />} />
+            <Route path="interview-schedules" element={<InterviewSchedules />} />
             <Route path="staff-roster" element={<StaffRoster />} />
             <Route path="payroll" element={<Payroll />} />
             <Route path="social-insurance" element={<SocialInsurance />} />
