@@ -11,6 +11,8 @@ import OrganizationChart from "./pages/OrganizationChart";
 import Payroll from "./pages/Payroll";
 import SocialInsurance from "./pages/SocialInsurance";
 import InterviewSchedules from "./pages/InterviewSchedules";
+import ExitInterviews from "./pages/ExitInterviews";
+import ExitInterviewDetail from "./pages/ExitInterviewDetail";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -45,7 +47,8 @@ function App() {
             <Route path="payroll" element={<Payroll />} />
             <Route path="social-insurance" element={<SocialInsurance />} />
             <Route path="chats" element={<ModulePlaceholder title="Chats & Announcements" />} />
-            <Route path="exit-interviews" element={<ModulePlaceholder title="Exit Interviews" />} />
+            <Route path="exit-interviews" element={<ExitInterviews />} />
+            <Route path="exit-interviews/:id" element={<ExitInterviewDetail />} />
             <Route path="terminations" element={<ModulePlaceholder title="Terminations" />} />
             <Route path="trainings" element={<ModulePlaceholder title="Trainings" />} />
             <Route path="org-chart" element={<OrganizationChart />} />
