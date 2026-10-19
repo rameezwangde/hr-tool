@@ -13,6 +13,8 @@ import SocialInsurance from "./pages/SocialInsurance";
 import InterviewSchedules from "./pages/InterviewSchedules";
 import ExitInterviews from "./pages/ExitInterviews";
 import ExitInterviewDetail from "./pages/ExitInterviewDetail";
+import Terminations from "./pages/Terminations";
+import TerminationCaseDetail from "./pages/TerminationCaseDetail";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -49,7 +51,8 @@ function App() {
             <Route path="chats" element={<ModulePlaceholder title="Chats & Announcements" />} />
             <Route path="exit-interviews" element={<ExitInterviews />} />
             <Route path="exit-interviews/:id" element={<ExitInterviewDetail />} />
-            <Route path="terminations" element={<ModulePlaceholder title="Terminations" />} />
+            <Route path="terminations" element={<Terminations />} />
+            <Route path="terminations/:id" element={<TerminationCaseDetail />} />
             <Route path="trainings" element={<ModulePlaceholder title="Trainings" />} />
             <Route path="org-chart" element={<OrganizationChart />} />
           </Route>
