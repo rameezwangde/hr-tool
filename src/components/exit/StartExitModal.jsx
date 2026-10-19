@@ -5,8 +5,22 @@ import { createExitCase, EXIT_TYPES, EXIT_REASONS } from "../../utils/exitInterv
 import useAuth from "../../auth/useAuth";
 
 export default function StartExitModal({ isOpen, onClose, onCreated }) {
-  const { user } = useAuth();
-  const staffList = getStaffProfiles().filter(
+  const storedStaff = getStaffProfiles();
+  const fallbackStaff = [
+    { employeeId: "EMP-1001", fullName: "Ahmed Al Mansoori", jobTitle: "Cashier Lead", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2023-01-10", employmentStatus: "Active" },
+    { employeeId: "EMP-1003", fullName: "Chef Maria Santos", jobTitle: "Head Cooking Specialist", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2022-11-05", employmentStatus: "Active" },
+    { employeeId: "EMP-1004", fullName: "Tariq Mahmoud", jobTitle: "Senior Grill Cook", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2023-05-18", employmentStatus: "Active" },
+    { employeeId: "EMP-1006", fullName: "Hassan Ali", jobTitle: "Wrapping Specialist", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2023-06-20", employmentStatus: "Active" },
+    { employeeId: "EMP-1007", fullName: "Kavita Patel", jobTitle: "Kitchen Operations Assistant", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2024-02-01", employmentStatus: "Active" },
+    { employeeId: "EMP-1008", fullName: "Rami Haddad", jobTitle: "Branch Manager", department: "Management Staff", manager: "General Manager", joiningDate: "2021-08-15", employmentStatus: "Active" },
+    { employeeId: "EMP-1009", fullName: "Sara Jenkins", jobTitle: "HR & People Officer", department: "Management Staff", manager: "HR Director", joiningDate: "2022-04-12", employmentStatus: "Active" },
+    { employeeId: "EMP-1010", fullName: "Omar Qasim", jobTitle: "Senior Accountant", department: "Management Staff", manager: "Finance Lead", joiningDate: "2022-09-01", employmentStatus: "Active" },
+    { employeeId: "EMP-1011", fullName: "Bilal Khan", jobTitle: "Cashier", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2024-03-10", employmentStatus: "Active" },
+    { employeeId: "EMP-1012", fullName: "Zayn Malik", jobTitle: "Line Cook", department: "Kitchen Staff", manager: "Rami Haddad", joiningDate: "2024-04-15", employmentStatus: "Active" }
+  ];
+
+  const rawStaffList = storedStaff.length > 0 ? storedStaff : fallbackStaff;
+  const staffList = rawStaffList.filter(
     (s) => String(s.employmentStatus || "").toLowerCase() !== "inactive" && String(s.employmentStatus || "").toLowerCase() !== "former employee"
   );
 
