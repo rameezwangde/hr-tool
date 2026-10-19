@@ -32,7 +32,8 @@ export const saveInsuranceSettings = (settings) => {
 };
 
 export const formatMoneyVnd = (value) => {
-  return `${Math.round(Number(value) || 0).toLocaleString()} VND`;
+  const num = Math.round(Number(value) || 0);
+  return `${new Intl.NumberFormat("en-US").format(num)} VND`;
 };
 
 export const parseNumber = (val) => {
