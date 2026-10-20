@@ -279,26 +279,26 @@ export default function TerminationCaseDetail() {
       )}
 
       {/* Main Dossier Header Card */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
+      <div className="rounded-2xl border border-slate-200/90 bg-gradient-to-b from-white via-white to-slate-50/50 p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
           <div className="flex items-start gap-4">
-            <div className="flex h-20 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-rose-600 to-indigo-700 text-xl font-black text-white shadow-sm">
+            <div className="flex h-20 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-rose-600 via-rose-700 to-indigo-800 text-xl font-black text-white shadow-md shadow-rose-600/20">
               {initials}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-black text-slate-900">{termCase.employeeName}</h2>
-                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-mono font-bold text-slate-600">
+                <h2 className="text-xl font-black tracking-tight text-slate-900">{termCase.employeeName}</h2>
+                <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-mono font-bold text-slate-600 border border-slate-200/60">
                   {termCase.employeeId}
                 </span>
                 <span
-                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase tracking-wide border ${
                     termCase.status === "Approved" || termCase.status === "Termination Executed" || termCase.status === "Completed"
-                      ? "bg-emerald-100 text-emerald-800"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                       : termCase.status === "Rejected"
-                      ? "bg-rose-100 text-rose-800"
-                      : "bg-amber-100 text-amber-800"
+                      ? "bg-rose-50 text-rose-800 border-rose-200"
+                      : "bg-amber-50 text-amber-800 border-amber-200"
                   }`}
                 >
                   {termCase.status}
@@ -309,22 +309,24 @@ export default function TerminationCaseDetail() {
                 {termCase.designation} • <span className="font-bold text-slate-800">{termCase.department}</span>
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 pt-2 text-[11px] text-slate-500">
-                <div>
-                  <span className="text-slate-400">Termination Type: </span>
-                  <span className="font-semibold text-slate-800">{termCase.terminationType}</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5 pt-2 text-xs text-slate-500">
+                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Termination Type</span>
+                  <span className="font-bold text-slate-800 text-xs">{termCase.terminationType}</span>
                 </div>
-                <div>
-                  <span className="text-slate-400">Nature: </span>
-                  <span className="font-semibold text-slate-800">{termCase.terminationNature}</span>
+                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Nature</span>
+                  <span className={`font-bold text-xs ${termCase.terminationNature === "Immediate" ? "text-rose-600" : "text-purple-700"}`}>
+                    {termCase.terminationNature}
+                  </span>
                 </div>
-                <div>
-                  <span className="text-slate-400">Effective Date: </span>
-                  <span className="font-bold text-slate-900">{termCase.effectiveDate}</span>
+                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Effective Date</span>
+                  <span className="font-black text-slate-900 text-xs">{termCase.effectiveDate}</span>
                 </div>
-                <div>
-                  <span className="text-slate-400">Case Manager: </span>
-                  <span className="font-semibold text-slate-700">{termCase.manager}</span>
+                <div className="bg-slate-50/80 rounded-lg p-2 border border-slate-100">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Case Manager</span>
+                  <span className="font-bold text-slate-700 text-xs">{termCase.manager}</span>
                 </div>
               </div>
             </div>
