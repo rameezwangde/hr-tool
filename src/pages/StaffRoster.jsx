@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, CalendarRange, ChevronDown, ChevronUp, Clock, Copy, Download, FileSpreadsheet, Printer, RotateCcw, Send, ShieldAlert, Sparkles, Trash2, Users } from "lucide-react";
+import { AlertTriangle, CalendarRange, ChevronDown, ChevronUp, Clock, Copy, Download, FileSpreadsheet, Printer, RotateCcw, Send, ShieldAlert, Trash2, Users } from "lucide-react";
 import AssignmentPanel from "../components/roster/AssignmentPanel";
 import RosterFilters from "../components/roster/RosterFilters";
 import RosterStatusBadge from "../components/roster/RosterStatusBadge";
@@ -8,7 +8,7 @@ import RosterSummary from "../components/roster/RosterSummary";
 import RosterTable from "../components/roster/RosterTable";
 import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
-import { getWorkLocations, saveStaffProfile, saveWorkLocation } from "../utils/storage";
+import { getWorkLocations } from "../utils/storage";
 import {
   branchOptions,
   buildRosterEntry,
@@ -195,114 +195,6 @@ export default function StaffRoster() {
     if (profile) setSelectedProfile(profile);
   };
 
-  const populateTestData = () => {
-    // 1. Ensure Dubai and Abu Dhabi exist in work locations
-    const currentLocs = getWorkLocations();
-    const locNames = currentLocs.map(l => l.name);
-    if (!locNames.includes("Dubai")) {
-      saveWorkLocation("Dubai");
-    }
-    if (!locNames.includes("Abu Dhabi")) {
-      saveWorkLocation("Abu Dhabi");
-    }
-
-    // 2. Sample staff with roles across Kitchen and Management
-    const testStaff = [
-      { employeeId: "EMP-1001", fullName: "Ahmed Al Mansoori", jobTitle: "Cashier", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 111 2233" },
-      { employeeId: "EMP-1002", fullName: "Fatima Noor", jobTitle: "Cashier", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 222 3344" },
-      { employeeId: "EMP-1003", fullName: "Chef Maria Santos", jobTitle: "Cooking", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 333 4455" },
-      { employeeId: "EMP-1004", fullName: "Tariq Mahmoud", jobTitle: "Cooking", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 444 5566" },
-      { employeeId: "EMP-1005", fullName: "Elena Rostova", jobTitle: "Dough", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 555 6677" },
-      { employeeId: "EMP-1006", fullName: "Hassan Ali", jobTitle: "Wrapping", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 666 7788" },
-      { employeeId: "EMP-1007", fullName: "Kavita Patel", jobTitle: "Helping", department: "Kitchen Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 777 8899" },
-      { employeeId: "EMP-1008", fullName: "Rami Haddad", jobTitle: "Branch Manager", department: "Management Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 888 9900" },
-      { employeeId: "EMP-1009", fullName: "Sara Jenkins", jobTitle: "HR", department: "Management Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 999 0011" },
-      { employeeId: "EMP-1010", fullName: "Omar Qasim", jobTitle: "Accountant", department: "Management Staff", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 123 4567" },
-      // Abu Dhabi branch staff
-      { employeeId: "EMP-1011", fullName: "Bilal Khan", jobTitle: "Cashier", department: "Kitchen Staff", workLocation: "Abu Dhabi", assignedShift: "Morning@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 333 1122" },
-      { employeeId: "EMP-1012", fullName: "Zayn Malik", jobTitle: "Cooking", department: "Kitchen Staff", workLocation: "Abu Dhabi", assignedShift: "Evening@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 444 2233" },
-    ];
-
-    testStaff.forEach(p => saveStaffProfile(p));
-
-    // 3. Set standard requirements in STATUS_REPORT_KEY so understaffed calculations show balanced numbers
-    try {
-      const storedConfig = JSON.parse(localStorage.getItem(STATUS_REPORT_KEY) || "{}") || {};
-      const newRequirements = { ...(storedConfig.requirements || {}) };
-      const branchesToSet = ["Dubai", "Abu Dhabi"];
-      const shiftsToSet = ["Morning", "Evening"];
-      const kitchenPos = ["Cashier", "Dough", "Cooking", "Wrapping", "Helping"];
-      const mgmtPos = ["Branch Manager", "HR", "Accountant"];
-
-      branchesToSet.forEach(b => {
-        shiftsToSet.forEach(s => {
-          kitchenPos.forEach(pos => {
-            newRequirements[`${b}::${s}::${pos}`] = 2;
-          });
-          mgmtPos.forEach(pos => {
-            newRequirements[`${b}::${s}::${pos}`] = 1;
-          });
-        });
-      });
-      localStorage.setItem(STATUS_REPORT_KEY, JSON.stringify({ ...storedConfig, requirements: newRequirements }));
-    } catch {}
-
-    // 4. Populate active roster schedules across the month for each staff
-    const currentRoster = { ...roster };
-    const days = daysInMonth(filters.month);
-
-    days.forEach((dayObj, dayIdx) => {
-      testStaff.forEach((p, pIdx) => {
-        const assignedShift = (p.assignedShift || "").includes("Evening") ? "Evening" : "Morning";
-        const assignedBranch = (p.assignedShift || "").includes("Abu Dhabi") ? "Abu Dhabi" : "Dubai";
-        const dept = p.department || "Kitchen Staff";
-
-        // Give each staff 1 day off every 6 days
-        const isOffDay = (dayIdx + pIdx) % 7 === 0;
-
-        const rKey = rosterCellKey({
-          month: filters.month,
-          branch: assignedBranch,
-          department: dept,
-          position: p.jobTitle,
-          shift: assignedShift,
-          date: dayObj.date,
-        });
-
-        const existing = currentRoster[rKey] || [];
-        if (!existing.some(e => e.employeeId === p.employeeId)) {
-          currentRoster[rKey] = [
-            ...existing,
-            buildRosterEntry({
-              employee: p,
-              date: dayObj.date,
-              branch: assignedBranch,
-              department: dept,
-              position: p.jobTitle,
-              shift: assignedShift,
-              status: isOffDay ? "OFF" : "Working",
-            })
-          ];
-        }
-      });
-    });
-
-    try {
-      saveRosterData(currentRoster);
-      setRoster({ ...currentRoster });
-
-      window.dispatchEvent(new Event("staffProfilesChanged"));
-      window.dispatchEvent(new Event("workLocationsChanged"));
-      window.dispatchEvent(new Event("staffRosterChanged"));
-
-      refresh();
-      window.alert("Test data populated successfully for " + filters.month + " with 12 employees across Dubai and Abu Dhabi!");
-    } catch (err) {
-      console.error("Failed to populate test data:", err);
-      window.alert("Error populating test data: " + err.message);
-    }
-  };
-
   const [showAllWarnings, setShowAllWarnings] = useState(false);
 
   const structuredWarnings = useMemo(() => filteredEmployees.flatMap((employee) => {
@@ -358,7 +250,6 @@ export default function StaffRoster() {
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Branch-wise monthly roster for Kitchen Staff and Management Staff, connected to active signed employees and staffing requirements.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <ActionButton icon={Sparkles} label="Load Test Data" onClick={populateTestData} />
               <ActionButton icon={FileSpreadsheet} label="Export CSV" onClick={exportCsv} />
               <ActionButton icon={Download} label="Export PDF" onClick={() => exportToPDF("staff-roster-print", `Staff_Roster_${filters.month}.pdf`)} />
               <ActionButton icon={Printer} label="Print" onClick={() => printDocument("staff-roster-print")} />

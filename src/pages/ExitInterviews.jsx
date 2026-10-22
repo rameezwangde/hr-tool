@@ -22,15 +22,13 @@ import {
   Download,
   Printer,
   ChevronDown,
-  Layers,
-  Sparkles
+  Layers
 } from "lucide-react";
 import {
   getExitCases,
   calculateExitProgress,
   EXIT_TYPES,
-  EXIT_STAGES,
-  SEED_EXIT_CASES
+  EXIT_STAGES
 } from "../utils/exitInterviews";
 import StartExitModal from "../components/exit/StartExitModal";
 import AnalyticsTab from "../components/exit/AnalyticsTab";
@@ -156,13 +154,6 @@ export default function ExitInterviews() {
     navigate(`/exit-interviews/${newCase.id}`);
   };
 
-  const handleResetSampleData = () => {
-    if (window.confirm("Reset exit interview cases to demonstration data?")) {
-      localStorage.setItem("exitCasesV1", JSON.stringify(SEED_EXIT_CASES));
-      reloadData();
-    }
-  };
-
   const handleExportPDF = () => {
     exportToPDF("exit-dashboard-table-container", `Exit_Interviews_Dashboard_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
@@ -199,15 +190,6 @@ export default function ExitInterviews() {
           >
             <TrendingUp size={14} className="text-violet-600" />
             {activeView === "dashboard" ? "View Analytics" : "Back to Dashboard"}
-          </button>
-
-          <button
-            onClick={handleResetSampleData}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
-            title="Reload realistic enterprise demonstration records"
-          >
-            <Sparkles size={14} className="text-amber-500" />
-            Reset Demo Data
           </button>
 
           <button

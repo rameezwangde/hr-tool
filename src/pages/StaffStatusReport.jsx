@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BriefcaseBusiness, Building2, Calendar, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, RotateCcw, Save, Search, Sparkles, SunMedium, Sunset, Trash2, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Building2, Calendar, CalendarDays, Check, ChevronLeft, ChevronRight, Download, Filter, MinusCircle, Plus, Printer, RotateCcw, Save, Search, SunMedium, Sunset, Trash2, UserCheck, UserRoundSearch, Users, X } from "lucide-react";
 import StaffProfileModal from "../components/StaffProfileModal";
 import { exportToPDF, printDocument } from "../utils/pdfGenerator";
 import { deleteWorkLocation, getContractDrafts, getContracts, getJobPositions, getStaffProfiles, getWorkLocations, saveStaffProfile, saveWorkLocation, updateStaffProfile } from "../utils/storage";
@@ -470,120 +470,6 @@ export default function StaffStatusReport() {
   const [yearStr, monthNumStr] = selectedMonth.split("-");
   const monthName = new Date(Number(yearStr), Number(monthNumStr) - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const selectedDayFormatted = new Date(selectedDay).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-  const populateTestData = () => {
-    // 1. Ensure Dubai and Abu Dhabi exist in work locations
-    const currentLocs = getWorkLocations();
-    const locNames = currentLocs.map(l => l.name);
-    if (!locNames.includes("Dubai")) {
-      saveWorkLocation("Dubai");
-    }
-    if (!locNames.includes("Abu Dhabi")) {
-      saveWorkLocation("Abu Dhabi");
-    }
-
-    // 2. Sample staff with roles across Kitchen and Management
-    const testStaff = [
-      { employeeId: "EMP-1001", fullName: "Ahmed Al Mansoori", jobTitle: "Cashier", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 111 2233" },
-      { employeeId: "EMP-1002", fullName: "Fatima Noor", jobTitle: "Cashier", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 222 3344" },
-      { employeeId: "EMP-1003", fullName: "Chef Maria Santos", jobTitle: "Cooking", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 333 4455" },
-      { employeeId: "EMP-1004", fullName: "Tariq Mahmoud", jobTitle: "Cooking", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 444 5566" },
-      { employeeId: "EMP-1005", fullName: "Elena Rostova", jobTitle: "Dough", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 555 6677" },
-      { employeeId: "EMP-1006", fullName: "Hassan Ali", jobTitle: "Wrapping", workLocation: "Dubai", assignedShift: "Evening@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 666 7788" },
-      { employeeId: "EMP-1007", fullName: "Kavita Patel", jobTitle: "Helping", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 777 8899" },
-      { employeeId: "EMP-1008", fullName: "Rami Haddad", jobTitle: "Branch Manager", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 888 9900" },
-      { employeeId: "EMP-1009", fullName: "Sara Jenkins", jobTitle: "HR", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 999 0011" },
-      { employeeId: "EMP-1010", fullName: "Omar Qasim", jobTitle: "Accountant", workLocation: "Dubai", assignedShift: "Morning@Dubai", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 50 123 4567" },
-      // Abu Dhabi branch staff
-      { employeeId: "EMP-1011", fullName: "Bilal Khan", jobTitle: "Cashier", workLocation: "Abu Dhabi", assignedShift: "Morning@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 333 1122" },
-      { employeeId: "EMP-1012", fullName: "Zayn Malik", jobTitle: "Cooking", workLocation: "Abu Dhabi", assignedShift: "Evening@Abu Dhabi", contractStatus: "Signed", employmentStatus: "Active", phoneNumber: "+971 52 444 2233" },
-    ];
-
-    testStaff.forEach(p => saveStaffProfile(p));
-
-    // 3. Set standard requirements for Dubai & Abu Dhabi
-    const newRequirements = { ...config.requirements };
-    const branchesToSet = ["Dubai", "Abu Dhabi"];
-    const shiftsToSet = ["Morning", "Evening"];
-    const kitchenPos = ["Cashier", "Dough", "Cooking", "Wrapping", "Helping"];
-    const mgmtPos = ["Branch Manager", "HR", "Accountant"];
-
-    branchesToSet.forEach(b => {
-      shiftsToSet.forEach(s => {
-        kitchenPos.forEach(pos => {
-          newRequirements[cellKey(b, s, pos)] = 2;
-        });
-        mgmtPos.forEach(pos => {
-          newRequirements[cellKey(b, s, pos)] = 1;
-        });
-      });
-    });
-
-    saveConfig({ ...config, requirements: newRequirements });
-
-    // 4. Populate active roster day schedules for current viewing day and next few days
-    const currentRoster = { ...roster };
-    const daysToSeed = [selectedDay];
-    
-    // Also seed a couple more days in this month
-    const [y, m] = selectedMonth.split("-");
-    const d1 = `${y}-${m}-01`;
-    const d15 = `${y}-${m}-15`;
-    if (!daysToSeed.includes(d1)) daysToSeed.push(d1);
-    if (!daysToSeed.includes(d15)) daysToSeed.push(d15);
-
-    daysToSeed.forEach(date => {
-      testStaff.forEach(p => {
-        const assignments = profileShiftAssignments(p);
-        assignments.forEach(a => {
-          const dept = getPositionDepartment(p.jobTitle);
-          const rKey = rosterCellKey({
-            month: selectedMonth,
-            branch: a.branch,
-            department: dept,
-            position: p.jobTitle,
-            shift: a.shift,
-            date,
-          });
-          const existing = currentRoster[rKey] || [];
-          if (!existing.some(e => e.employeeId === p.employeeId)) {
-            currentRoster[rKey] = [
-              ...existing,
-              buildRosterEntry({
-                employee: p,
-                date,
-                branch: a.branch,
-                department: dept,
-                position: p.jobTitle,
-                shift: a.shift,
-                status: "Working",
-              })
-            ];
-          }
-        });
-      });
-    });
-
-    try {
-      saveRosterData(currentRoster);
-      const updatedProfiles = getStaffProfiles();
-      const updatedLocations = getWorkLocations();
-      
-      setProfiles([...updatedProfiles]);
-      setLocations([...updatedLocations]);
-      setRoster({ ...currentRoster });
-      
-      // Dispatch events so all tabs & components sync
-      window.dispatchEvent(new Event("staffProfilesChanged"));
-      window.dispatchEvent(new Event("workLocationsChanged"));
-      window.dispatchEvent(new Event("staffRosterChanged"));
-      
-      // Small feedback alert or notification
-      window.alert("Test data populated successfully with 12 employees, 2 branches, and scheduled shifts!");
-    } catch (err) {
-      console.error("Failed to populate test data:", err);
-      window.alert("Error populating test data: " + err.message);
-    }
-  };
 
   return (
     <div className="mx-auto max-w-full px-4 pb-8">
@@ -595,7 +481,6 @@ export default function StaffStatusReport() {
             <p className="text-xs text-slate-300 font-medium mt-0.5">Real-time daily staffing overview, position requirements, and assignment tracking.</p>
           </div>
           <div className="flex flex-wrap gap-2 no-print">
-            <Action icon={Sparkles} label="Load Test Data" onClick={populateTestData} />
             <Action icon={Plus} label="Add Row" onClick={() => setIsAddingBranch(true)} />
             <Action icon={editNeeds ? Save : Filter} label={editNeeds ? "Save" : "Edit Required"} onClick={() => setEditNeeds(!editNeeds)} primary={editNeeds} />
             <Action icon={Plus} label="Assign" primary={!editNeeds} onClick={() => openAssign()} />

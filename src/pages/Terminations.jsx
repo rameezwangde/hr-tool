@@ -23,14 +23,12 @@ import {
   Printer,
   ChevronDown,
   Layers,
-  Sparkles,
   ExternalLink
 } from "lucide-react";
 import {
   getTerminationCases,
   TERMINATION_TYPES,
-  TERMINATION_STATUSES,
-  SEED_TERMINATION_CASES
+  TERMINATION_STATUSES
 } from "../utils/terminations";
 import CreateTerminationModal from "../components/terminations/CreateTerminationModal";
 import TerminationAnalyticsTab from "../components/terminations/TerminationAnalyticsTab";
@@ -130,13 +128,6 @@ export default function Terminations() {
     navigate(`/terminations/${newCase.id}`);
   };
 
-  const handleResetSampleData = () => {
-    if (window.confirm("Reset termination cases to enterprise demo records?")) {
-      localStorage.setItem("terminationCasesV1", JSON.stringify(SEED_TERMINATION_CASES));
-      reloadData();
-    }
-  };
-
   const handleExportPDF = () => {
     exportToPDF("terminations-table-container", `Terminations_Summary_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
@@ -169,14 +160,6 @@ export default function Terminations() {
           >
             <TrendingUp size={14} className="text-violet-600" />
             {activeView === "dashboard" ? "View Analytics" : "Back to Cases"}
-          </button>
-
-          <button
-            onClick={handleResetSampleData}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
-            title="Reload realistic demonstration cases"
-          >
-            <Sparkles size={14} className="text-amber-500" /> Reset Demo Data
           </button>
 
           <button
