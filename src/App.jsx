@@ -15,6 +15,7 @@ import ExitInterviews from "./pages/ExitInterviews";
 import ExitInterviewDetail from "./pages/ExitInterviewDetail";
 import Terminations from "./pages/Terminations";
 import TerminationCaseDetail from "./pages/TerminationCaseDetail";
+import Trainings from "./pages/Trainings";
 import ModulePlaceholder from "./pages/ModulePlaceholder";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -53,7 +54,7 @@ function App() {
             <Route path="exit-interviews/:id" element={<ExitInterviewDetail />} />
             <Route path="terminations" element={<Terminations />} />
             <Route path="terminations/:id" element={<TerminationCaseDetail />} />
-            <Route path="trainings" element={<ModulePlaceholder title="Trainings" />} />
+            <Route path="trainings" element={<Trainings />} />
             <Route path="org-chart" element={<OrganizationChart />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
